@@ -5,12 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { Store, normalize } from '../server/store.js';
 import { createApp } from '../server/app.js';
+import { TokenStore } from '../server/tokens.js';
 
 let server, base, dataDir;
 
 before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'observe-test-'));
-  server = createApp(new Store({ dataDir }));
+  server = createApp(new Store({ dataDir }), { tokens: new TokenStore({ dataDir }) });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -116,4 +117,29 @@ test('Store descarta los eventos más antiguos por lotes y mantiene las sesiones
   assert.equal(perSession, store.events.length);
   assert.equal(store.events.at(-1).ts, 24);
   assert.ok(store.sessionEvents('a').every((e) => store.events.includes(e)));
+});
+
+test('POST /api/tokens guarda los números, avisa por el stream y rechaza lo que no lo es', async () => {
+  const ctrl = new AbortController();
+  const stream = await fetch(base + '/api/stream', { signal: ctrl.signal });
+  const reader = stream.body.getReader();
+  const body = { session_id: 'tok1', byTool: { toolu_x: { input: 1, output: 5, cacheRead: 10, cacheWrite: 0, shared: 1 } },
+    totals: { input: 1, output: 5, cacheRead: 10, cacheWrite: 0, messages: 1 } };
+  assert.equal((await post('/api/tokens', body)).status, 200);
+  let seen = '';
+  while (!seen.includes('event: tokens')) seen += new TextDecoder().decode((await reader.read()).value);
+  assert.match(seen, /"sessionId":"tok1"/);
+  ctrl.abort();
+  const t = await (await fetch(base + '/api/sessions/tok1/tokens')).json();
+  assert.equal(t.available, true);
+  assert.equal(t.byTool.toolu_x.output, 5);
+  assert.equal((await post('/api/tokens', { ...body, totals: { ...body.totals, input: 'mucho' } })).status, 422);
+  // Una foto más antigua (menos mensajes) que llega tarde no pisa la nueva.
+  await post('/api/tokens', { ...body, totals: { ...body.totals, messages: 3 } });
+  const stale = await (await post('/api/tokens', { ...body, byTool: {}, totals: { ...body.totals, messages: 2 } })).json();
+  assert.ok(stale.ignored);
+  assert.equal((await (await fetch(base + '/api/sessions/tok1/tokens')).json()).totals.messages, 3);
+  // Desde otra web no se puede escribir.
+  const r = await fetch(base + '/api/tokens', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify(body) });
+  assert.equal(r.status, 403);
 });

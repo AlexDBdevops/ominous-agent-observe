@@ -6,17 +6,23 @@ services:
     restart: unless-stopped
     environment:
       OBSERVE_MAX_EVENTS: "${OBSERVE_MAX_EVENTS:-50000}"
+      OBSERVE_RETENTION_DAYS: "${OBSERVE_RETENTION_DAYS:-14}"
+      OBSERVE_DETAIL: "${OBSERVE_DETAIL:-minimo}"
       OBSERVE_ALLOWED_HOSTS: "${OBSERVE_ALLOWED_HOSTS:-}"
-      OBSERVE_TOKENS: "${OBSERVE_TOKENS:-1}"
     # Dentro del container escucha en 0.0.0.0; hacia fuera solo se publica
     # en localhost salvo que OBSERVE_BIND se cambie explícitamente.
     ports:
       - "${OBSERVE_BIND:-127.0.0.1}:${OBSERVE_PORT:-4982}:4982"
+    # No monta nada de tu equipo: los eventos llegan por HTTP y los tokens los
+    # manda el hook de tokens (solo números). Solo escribe en su volumen.
     volumes:
       - observe-data:/data
-      # Transcripts de Claude Code en SOLO LECTURA: de aquí salen los tokens
-      # por herramienta (los hooks no los traen). CLAUDE_PROJECTS_DIR lo cambia.
-      - "${CLAUDE_PROJECTS_DIR:-~/.claude/projects}:/claude-projects:ro"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   observe-data:

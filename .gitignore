@@ -44,3 +44,6 @@ GEMINI.md
 .mcp.json
 design/
 *.dc.html
+
+# Estado local del hook de tokens si se ejecuta desde el repo
+hooks/.observe-tokens-state/

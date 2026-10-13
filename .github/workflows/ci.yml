@@ -60,8 +60,9 @@ jobs:
         run: docker build -t observe:ci .
       - name: Smoke test
         run: |
-          # Igual que docker compose: publicada solo en localhost
-          docker run -d --name observe -p 127.0.0.1:4982:4982 observe:ci
+          # Igual que docker compose: solo localhost, sistema de archivos de solo
+          # lectura (salvo /data y /tmp), sin capacidades ni escalado de privilegios
+          docker run -d --name observe -p 127.0.0.1:4982:4982 -v observe-ci:/data --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges observe:ci
           trap 'docker logs observe; docker rm -f observe >/dev/null' EXIT
           B=http://127.0.0.1:4982
           for i in $(seq 1 20); do curl -fs "$B/api/health" >/dev/null && break; sleep 1; done
@@ -70,6 +71,10 @@ jobs:
           curl -fs -X POST "$B/api/hooks" -H 'content-type: application/json' \
             -d '{"session_id":"ci","hook_event_name":"SessionStart","cwd":"/tmp/ci","source":"startup"}' >/dev/null
           curl -fs "$B/api/sessions" | grep -q '"id":"ci"'
+          # Tokens: solo números; algo que no lo sea se rechaza
+          curl -fs -X POST "$B/api/tokens" -H 'content-type: application/json' -d '{"session_id":"ci","byTool":{"toolu_1":{"input":1,"output":2,"cacheRead":3,"cacheWrite":4,"shared":1}},"totals":{"input":1,"output":2,"cacheRead":3,"cacheWrite":4,"messages":1}}' >/dev/null
+          curl -fs "$B/api/sessions/ci/tokens" | grep -q '"available":true'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"session_id":"ci","totals":{"input":"x"}}' "$B/api/tokens")" = 422
           # La vista se sirve
           curl -fs "$B/" | grep -qi '<html'
           # Protecciones: Host ajeno (DNS rebinding) y escritura sin JSON

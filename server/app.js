@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalize } from './store.js';
+import { sanitizeTokens } from './tokens.js';
 import { summarizeSession, NO_TOKENS } from '../public/derive.js';
 
 const PUBLIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
@@ -71,17 +72,9 @@ export function isSameOrigin(origin, hostHeader) {
   }
 }
 
-export function createApp(store, { tokens = null, extraHosts = [] } = {}) {
+export function createApp(store, { tokens = null, extraHosts = [], detail = 'minimo' } = {}) {
   const allowedHosts = [...LOCAL_HOSTS, ...extraHosts.map(hostname).filter(Boolean)];
-  const tokensOf = (events) => {
-    if (!tokens) return NO_TOKENS;
-    try {
-      return tokens.forSession(events);
-    } catch (err) {
-      console.error('tokens:', err.message);
-      return NO_TOKENS;
-    }
-  };
+  const tokensOf = (id) => (tokens ? tokens.get(id) : NO_TOKENS);
 
   // Resumen por sesión, recalculado solo si sus eventos cambiaron
   // (la vista pide /api/sessions tras cada evento).
@@ -98,10 +91,18 @@ export function createApp(store, { tokens = null, extraHosts = [] } = {}) {
 
   const clients = new Set();
 
-  store.subscribe((ev) => {
-    const msg = `event: hook\ndata: ${JSON.stringify(ev)}\n\n`;
+  const broadcast = (event, data) => {
+    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const res of clients) res.write(msg);
-  });
+  };
+  store.subscribe((ev) => broadcast('hook', ev));
+
+  // Caducidad: cada hora se quitan los eventos (y sus tokens) más viejos que
+  // la retención configurada.
+  const prune = setInterval(() => {
+    if (store.prune() && tokens) tokens.retain(new Set(store.sessionIds()));
+  }, 3600e3);
+  prune.unref();
 
   const keepAlive = setInterval(() => {
     for (const res of clients) res.write(': ping\n\n');
@@ -115,12 +116,28 @@ export function createApp(store, { tokens = null, extraHosts = [] } = {}) {
     } catch (err) {
       return sendJson(res, err.status ?? 400, { ok: false, error: err.status ? err.message : 'JSON inválido' });
     }
-    const rec = normalize(body);
+    const rec = normalize(body, Date.now(), { detail });
     if (!rec) return sendJson(res, 422, { ok: false, error: 'faltan session_id o hook_event_name' });
     const ev = store.insert(rec);
     // Claude Code interpreta el JSON de un hook HTTP como salida del hook:
     // a /api/hooks se responde {} para no alterar nada.
     return sendJson(res, 200, rawHook ? {} : { ok: true, id: ev.id });
+  }
+
+  // Tokens que envía el hook hooks/observe-tokens.mjs (solo números).
+  async function ingestTokens(req, res) {
+    let body;
+    try {
+      body = JSON.parse(await readBody(req));
+    } catch (err) {
+      return sendJson(res, err.status ?? 400, { ok: false, error: err.status ? err.message : 'JSON inválido' });
+    }
+    const clean = sanitizeTokens(body);
+    if (!clean) return sendJson(res, 422, { ok: false, error: 'tokens no válidos' });
+    if (!tokens) return sendJson(res, 503, { ok: false, error: 'tokens desactivados' });
+    if (!tokens.set(clean)) return sendJson(res, 200, { ok: true, ignored: 'foto más antigua que la guardada' });
+    broadcast('tokens', { sessionId: clean.sessionId });
+    return sendJson(res, 200, { ok: true, tools: Object.keys(clean.byTool).length });
   }
 
   return http.createServer(async (req, res) => {
@@ -144,6 +161,7 @@ export function createApp(store, { tokens = null, extraHosts = [] } = {}) {
     try {
       if (req.method === 'POST' && p === '/api/hooks') return await ingest(req, res, true);
       if (req.method === 'POST' && p === '/api/events') return await ingest(req, res, false);
+      if (req.method === 'POST' && p === '/api/tokens') return await ingestTokens(req, res);
 
       if (req.method === 'GET' && p === '/api/health') {
         return sendJson(res, 200, { ok: true, events: store.events.length, sessions: store.bySession.size });
@@ -163,12 +181,12 @@ export function createApp(store, { tokens = null, extraHosts = [] } = {}) {
           const safe = id.slice(0, 8).replace(/[^A-Za-z0-9_-]/g, '_');
           res.setHeader('content-disposition', `attachment; filename="observe-${safe}.json"`);
         }
-        return sendJson(res, 200, { events, tokens: tokensOf(events) });
+        return sendJson(res, 200, { events, tokens: tokensOf(id) });
       }
 
       const t = p.match(/^\/api\/sessions\/([^/]+)\/tokens$/);
       if (req.method === 'GET' && t) {
-        return sendJson(res, 200, tokensOf(store.sessionEvents(decodeURIComponent(t[1]))));
+        return sendJson(res, 200, tokensOf(decodeURIComponent(t[1])));
       }
 
       if (req.method === 'GET' && p === '/api/stream') {

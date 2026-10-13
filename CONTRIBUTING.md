@@ -29,6 +29,12 @@ npm run demo      # envía una sesión de ejemplo
 
 Abre <http://127.0.0.1:4982>.
 
+Para probar los hooks sin tocar tu configuración de Claude Code, apunta el instalador a una carpeta de pruebas:
+
+```bash
+CLAUDE_CONFIG_DIR=/tmp/claude-prueba npm run hooks:install
+```
+
 ## Vulnerabilidades
 
 No abras un issue público. Usa el reporte privado de GitHub (pestaña *Security*).
