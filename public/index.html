@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>observe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 22'%3E%3Cpath d='M2 11 C 9 1, 25 1, 32 11 C 25 21, 9 21, 2 11 Z' fill='none' stroke='%233fe0ff' stroke-width='2'/%3E%3Ccircle cx='17' cy='11' r='5.2' fill='%23ff3fa4'/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <svg width="34" height="22" viewBox="0 0 34 22" aria-hidden="true"><path d="M2 11 C 9 1, 25 1, 32 11 C 25 21, 9 21, 2 11 Z" fill="none" stroke="#3fe0ff" stroke-width="1.6"/><circle cx="17" cy="11" r="5.2" fill="#ff3fa4"/><circle class="pupil" cx="18" cy="11" r="2.2" fill="#07090c"/></svg>
+      <span class="brand-name">observe</span>
+      <span class="version">v0.1</span>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="on" role="tab" aria-selected="true">Proyectos</button>
+      <button role="tab" aria-selected="false" disabled title="Próximamente">Etiquetas</button>
+    </div>
+    <nav id="tree" class="tree"></nav>
+  </aside>
+
+  <main class="main">
+    <header class="header">
+      <div class="title-block">
+        <div id="path" class="path"></div>
+        <div class="title-line">
+          <h1 id="title">Esperando eventos…</h1>
+          <span id="hash" class="hash" hidden></span>
+        </div>
+      </div>
+      <div class="header-tools">
+        <span id="watching" class="watching">
+          <svg width="18" height="12" viewBox="0 0 34 22" aria-hidden="true"><path d="M2 11 C 9 1, 25 1, 32 11 C 25 21, 9 21, 2 11 Z" fill="none" stroke="currentColor" stroke-width="2.4"/><circle class="pupil" cx="18" cy="11" r="4.5" fill="currentColor"/></svg>
+          <span id="watching-text">Vigilando · 0 agentes</span>
+        </span>
+        <div id="ranges" class="ranges"></div>
+        <button id="export" class="icon-btn" aria-label="Exportar eventos" title="Exportar eventos (JSON)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="stats">
+      <div><span class="k">EVENTOS</span><span class="v" id="st-events">0</span></div>
+      <div><span class="k">DURACIÓN</span><span class="v" id="st-dur">—</span></div>
+      <div><span class="k">ERRORES</span><span class="v" id="st-err">0</span></div>
+      <div><span class="k">TOKENS</span><span class="v" id="st-tok">—</span></div>
+      <div><span class="k">EN CURSO</span><span class="v running" id="st-run">—</span></div>
+    </section>
+
+    <section class="activity" id="activity">
+      <div class="act-head">
+        <span class="k">ACTIVIDAD</span>
+        <span id="act-info" class="act-info"></span>
+        <button id="act-auto" class="act-auto on">Auto</button>
+        <button id="act-toggle" class="act-toggle" aria-expanded="false">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          <span>Desplegar</span>
+        </button>
+      </div>
+      <div id="act-body" class="act-body"><div id="lanes"></div></div>
+      <div id="axis" class="axis"></div>
+      <div id="act-resize" class="act-resize" title="Arrastra para cambiar el alto" hidden></div>
+    </section>
+
+    <section class="filters">
+      <div id="filters" class="filter-pills"></div>
+      <label class="search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <input id="search" placeholder="Buscar eventos…" autocomplete="off">
+      </label>
+    </section>
+
+    <section class="events">
+      <div class="table">
+        <div class="thead grid"><span>HORA</span><span>HERRAMIENTA</span><span>DETALLE</span><span class="right" title="Tokens del mensaje del modelo que lanzó la herramienta: entrada (incluida caché) · salida">TOKENS <small>ENT·SAL</small></span><span class="right">DURACIÓN</span></div>
+        <div id="rows"></div>
+        <div id="empty" class="empty" hidden></div>
+      </div>
+    </section>
+  </main>
+</div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

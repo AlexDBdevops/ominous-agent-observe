@@ -1,0 +1,22 @@
+services:
+  observe:
+    build: .
+    image: ominous-agent-observe:local
+    container_name: ominous-agent-observe
+    restart: unless-stopped
+    environment:
+      OBSERVE_MAX_EVENTS: "${OBSERVE_MAX_EVENTS:-50000}"
+      OBSERVE_ALLOWED_HOSTS: "${OBSERVE_ALLOWED_HOSTS:-}"
+      OBSERVE_TOKENS: "${OBSERVE_TOKENS:-1}"
+    # Dentro del container escucha en 0.0.0.0; hacia fuera solo se publica
+    # en localhost salvo que OBSERVE_BIND se cambie explícitamente.
+    ports:
+      - "${OBSERVE_BIND:-127.0.0.1}:${OBSERVE_PORT:-4982}:4982"
+    volumes:
+      - observe-data:/data
+      # Transcripts de Claude Code en SOLO LECTURA: de aquí salen los tokens
+      # por herramienta (los hooks no los traen). CLAUDE_PROJECTS_DIR lo cambia.
+      - "${CLAUDE_PROJECTS_DIR:-~/.claude/projects}:/claude-projects:ro"
+
+volumes:
+  observe-data:

@@ -1,0 +1,46 @@
+# Entorno y secretos
+.env
+.env.*
+!.env.example
+
+# Dependencias y builds
+node_modules/
+dist/
+build/
+bin/
+*.log
+
+# Datos locales de eventos
+data/
+*.sqlite
+*.db
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Claude Code local
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Configuración de asistentes de IA y material de diseño interno:
+# se quedan en local, nunca en el repo.
+CLAUDE.md
+CLAUDE.local.md
+HANDOFF.md
+AGENTS.md
+GEMINI.md
+.claude/
+.codex/
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+.aider*
+.continue/
+.github/copilot-instructions.md
+.mcp.json
+design/
+*.dc.html
