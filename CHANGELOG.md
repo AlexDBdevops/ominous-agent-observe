@@ -8,4 +8,4 @@
 - Duración real de cada herramienta (Pre/Post por `tool_use_id`) y tokens por ejecución leídos del transcript.
 - Persistencia en JSONL con límite de eventos, y stream en vivo por SSE.
 - Seguridad: solo localhost, protección contra DNS rebinding y contra escritura desde otras webs, transcripts en solo lectura.
-- Imagen Docker mínima (sin npm), CI con tests, zizmor, prueba de humo, Trivy y CodeQL, y Dependabot.
+- Imagen Docker mínima (sin npm), CI con tests, zizmor, prueba de humo, Trivy y CodeQL, y Dependabot (Node se queda en la 24 LTS).

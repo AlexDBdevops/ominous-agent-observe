@@ -11,6 +11,11 @@ updates:
     directory: /
     schedule: { interval: monthly }
     cooldown: { default-days: 7 }
+    # Solo nuevos digest y parches de Node 24 (LTS). Un salto de versión mayor
+    # (las impares no tienen soporte largo) se decide a mano.
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
   - package-ecosystem: pip          # zizmor
     directory: /tools/ci
     schedule: { interval: monthly }
