@@ -34,7 +34,11 @@ button { font: inherit; }
 /* Sidebar */
 .sidebar { flex: 1 1 248px; max-width: 280px; border-right: 1px solid var(--line); padding: 18px 14px; display: flex; flex-direction: column; gap: 20px; background: var(--bg-2); }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-.brand-name { font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: .5px; color: var(--text-hi); }
+/* Logo: "ominous" (marca, Space Grotesk) sobre "agent observer" (producto, JetBrains Mono). */
+.brand-text { display: flex; flex-direction: column; gap: 3px; line-height: 1; }
+.brand-name { font-family: var(--display); font-weight: 700; font-size: 20px; letter-spacing: .3px; color: var(--text-hi); }
+.brand-sub { font-family: var(--mono); font-size: 10.5px; letter-spacing: 1.2px; color: var(--muted); }
+.brand:hover .brand-sub { color: var(--cyan); }
 .version { margin-left: auto; font-size: 10px; color: var(--muted-2); }
 .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; background: var(--bg-hover); border: 1px solid var(--line); border-radius: 8px; padding: 3px; }
 .tabs button { height: 30px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }

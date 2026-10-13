@@ -1,4 +1,4 @@
-# ominous-agent-observe
+# Ominous Agent Observer
 
 Observa en vivo lo que hacen tus sesiones de Claude Code: cada sesión, cada config cargada y cada herramienta ejecutada, en una línea de tiempo y una tabla de eventos.
 
