@@ -1,6 +1,6 @@
 # Cambios
 
-## Sin publicar
+## v0.2.0 (2026-10-13)
 
 - El container ya no monta `~/.claude/projects`: los tokens los manda un hook que corre en tu equipo (`hooks/observe-tokens.mjs`) y solo envía números a `POST /api/tokens`. Corre en segundo plano tras cada herramienta (`"async": true`) y lee solo lo nuevo del transcript, así que los tokens siguen llegando casi en vivo sin frenar a Claude.
 - `npm run hooks:install` / `hooks:uninstall` añaden o quitan los hooks en `~/.claude/settings.json`, sin tocar los demás y con copia de seguridad.
