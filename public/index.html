@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>observe</title>
+<title>Ominous Agent Observer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="/style.css">
@@ -12,11 +12,11 @@
 <body>
 <div class="shell">
   <aside class="sidebar">
-    <div class="brand">
+    <a class="brand" href="#" title="Ominous Agent Observer · todos los proyectos" aria-label="Ominous Agent Observer, ir al inicio">
       <svg width="34" height="22" viewBox="0 0 34 22" aria-hidden="true"><path d="M2 11 C 9 1, 25 1, 32 11 C 25 21, 9 21, 2 11 Z" fill="none" stroke="#3fe0ff" stroke-width="1.6"/><circle cx="17" cy="11" r="5.2" fill="#ff3fa4"/><circle class="pupil" cx="18" cy="11" r="2.2" fill="#07090c"/></svg>
-      <span class="brand-name">observe</span>
+      <span class="brand-text"><span class="brand-name">ominous</span><span class="brand-sub">agent observer</span></span>
       <span class="version">v0.1</span>
-    </div>
+    </a>
     <div class="tabs" role="tablist">
       <button class="on" role="tab" aria-selected="true">Proyectos</button>
       <button role="tab" aria-selected="false" disabled title="Próximamente">Etiquetas</button>
@@ -24,7 +24,7 @@
     <nav id="tree" class="tree"></nav>
   </aside>
 
-  <main class="main">
+  <main class="main" id="main">
     <header class="header">
       <div class="title-block">
         <div id="path" class="path"></div>
@@ -44,6 +44,13 @@
         </button>
       </div>
     </header>
+
+    <section class="home" id="home" hidden>
+      <div class="home-legend">
+        <span><i class="lg live"></i>viva</span><span><i class="lg"></i>terminada o inactiva</span><span><i class="lg sub"></i>subagente</span>
+      </div>
+      <div id="home-tree" class="home-tree"></div>
+    </section>
 
     <section class="stats">
       <div><span class="k">EVENTOS</span><span class="v" id="st-events">0</span></div>

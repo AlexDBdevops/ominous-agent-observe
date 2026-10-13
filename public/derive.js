@@ -312,5 +312,96 @@ export function summarizeSession(sessionId, events) {
     lastTs: sorted[sorted.length - 1]?.ts ?? 0,
     // Una sesión reanudada (SessionStart después del SessionEnd) vuelve a estar viva.
     ended: lastIndexOf(sorted, 'SessionEnd') > lastIndexOf(sorted, 'SessionStart'),
+    // Subagentes que lanzó (para el árbol de la portada).
+    agents: buildLanes(sessionId, sorted).filter((l) => !l.main).map(({ id, name }) => ({ id, name })),
   };
+}
+
+// Árbol de la portada: medidas en unidades del viewBox del SVG.
+const TREE = { spoke: 22, maxSpokes: 10, gap: 170, minR: 120, perSession: 64, label: 14 };
+
+/**
+ * Coloca proyectos, sesiones y subagentes para el árbol de la portada.
+ * Cada proyecto es un círculo; sus sesiones van en el borde y las vivas en el
+ * centro. Los círculos se empaquetan sin solaparse, el mayor en el medio.
+ * Las etiquetas del borde van hacia fuera del círculo (lx, ly, anchor).
+ * Devuelve { width, height, projects: [{ name, x, y, r, sessions: [{ id, x, y, live, agents: [{ x, y }], more, lx, ly, anchor }] }] }.
+ */
+export function layoutTree(sessions, isLive) {
+  if (!sessions.length) return { width: 0, height: 0, projects: [] };
+  const groups = new Map();
+  for (const s of sessions) {
+    if (!groups.has(s.project)) groups.set(s.project, []);
+    groups.get(s.project).push(s);
+  }
+  const circles = [...groups].map(([name, list]) => {
+    const edge = list.filter((s) => !isLive(s));
+    // Perímetro suficiente para que las sesiones del borde no se pisen.
+    const r = Math.max(TREE.minR, (edge.length * TREE.perSession) / (2 * Math.PI) + TREE.spoke);
+    return { name, r, list, edge, live: list.filter(isLive), x: 0, y: 0 };
+  }).sort((a, b) => b.r - a.r || a.name.localeCompare(b.name));
+
+  // Cada círculo, tangente a uno ya colocado, en el hueco libre más cercano al
+  // centro. La distancia horizontal cuenta menos: las pantallas son apaisadas.
+  const cost = (x, y) => Math.hypot(x * 0.55, y);
+  const placed = [];
+  for (const c of circles) {
+    let best = placed.length ? null : { x: 0, y: 0 };
+    for (const p of placed) {
+      for (let k = 0; k < 36; k++) {
+        const a = (k / 36) * 2 * Math.PI;
+        const d = p.r + c.r + TREE.gap;
+        const x = p.x + d * Math.cos(a), y = p.y + d * Math.sin(a);
+        if (placed.some((q) => Math.hypot(q.x - x, q.y - y) < q.r + c.r + TREE.gap - 0.5)) continue;
+        if (!best || cost(x, y) < cost(best.x, best.y)) best = { x, y };
+      }
+    }
+    Object.assign(c, best);
+    placed.push(c);
+  }
+
+  // Margen para radios, etiquetas y el nombre del proyecto encima.
+  const m = TREE.spoke + 70;
+  const minX = Math.min(...placed.map((c) => c.x - c.r)) - m, maxX = Math.max(...placed.map((c) => c.x + c.r)) + m;
+  const minY = Math.min(...placed.map((c) => c.y - c.r)) - m, maxY = Math.max(...placed.map((c) => c.y + c.r)) + m;
+
+  const spokes = (s, x, y) => {
+    const n = Math.min(s.agents?.length ?? 0, TREE.maxSpokes);
+    return Array.from({ length: n }, (_, i) => {
+      const a = (i / n) * 2 * Math.PI - Math.PI / 2;
+      return { x: x + TREE.spoke * Math.cos(a), y: y + TREE.spoke * Math.sin(a) };
+    });
+  };
+  // a: ángulo hacia fuera del círculo (null = sesión viva: etiqueta debajo).
+  const node = (s, x, y, live, a = null) => {
+    const reach = (s.agents?.length ? TREE.spoke : 9) + TREE.label;
+    const out = a ?? Math.PI / 2;
+    const cos = Math.cos(out);
+    return {
+      id: s.id, x, y, live, agents: spokes(s, x, y),
+      more: Math.max(0, (s.agents?.length ?? 0) - TREE.maxSpokes),
+      lx: x + reach * cos, ly: y + reach * Math.sin(out) + 4,
+      anchor: Math.abs(cos) < 0.35 ? 'middle' : cos > 0 ? 'start' : 'end',
+    };
+  };
+
+  const projects = placed.map((c) => {
+    const x = c.x - minX, y = c.y - minY;
+    const sessions = [
+      // Vivas en el centro (varias: en un anillo pequeño).
+      ...c.live.map((s, i) => {
+        if (c.live.length === 1) return node(s, x, y, true);
+        const a = (i / c.live.length) * 2 * Math.PI - Math.PI / 2, rr = Math.min(c.r * 0.45, 18 * c.live.length);
+        return node(s, x + rr * Math.cos(a), y + rr * Math.sin(a), true);
+      }),
+      // El resto en el borde, en el orden recibido (más recientes primero). Se
+      // empieza medio paso después de arriba para no tapar el nombre del proyecto.
+      ...c.edge.map((s, i) => {
+        const a = ((i + 0.5) / c.edge.length) * 2 * Math.PI - Math.PI / 2;
+        return node(s, x + c.r * Math.cos(a), y + c.r * Math.sin(a), false, a);
+      }),
+    ];
+    return { name: c.name, x, y, r: c.r, sessions };
+  });
+  return { width: maxX - minX, height: maxY - minY, projects };
 }

@@ -1,0 +1,33 @@
+name: codeql
+# Análisis de seguridad del código JavaScript, en cada PR, en main y una vez por semana
+# (las consultas se actualizan aunque el código no cambie).
+on:
+  push: { branches: [main] }
+  pull_request:
+  schedule:
+    - cron: '23 5 * * 1'
+permissions: { contents: read }
+jobs:
+  analyze:
+    # Code scanning es gratis en repos públicos; en privados necesita GitHub Advanced Security
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      # Acciones fijadas por SHA (checkout v7.0.1, codeql-action v4.38.2); Dependabot las mantiene al día
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { persist-credentials: false }
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+          config: |
+            paths-ignore:
+              - test
+      - name: Analyze
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2

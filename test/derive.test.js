@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildRows, buildLanes, packDots, subcommand, classifyTool, summarizeSession, formatDuration } from '../public/derive.js';
+import { buildRows, buildLanes, packDots, subcommand, classifyTool, summarizeSession, layoutTree, formatDuration } from '../public/derive.js';
 
 let id = 0;
 const ev = (ts, hookName, payload = {}) => ({ id: ++id, ts, sessionId: 's1', agentId: 's1', hookName, cwd: '/p/demo', payload });
@@ -142,4 +142,38 @@ test('el título ignora los avisos automáticos que llegan como prompt', () => {
     ev(2000, 'UserPromptSubmit', { prompt: 'Arregla el login' }),
   ]);
   assert.equal(s.title, 'Arregla el login');
+});
+
+test('el resumen lista los subagentes de la sesión', () => {
+  const s = summarizeSession('s1', [
+    ev(1000, 'SessionStart'),
+    { ...ev(2000, 'SubagentStart', { agent_type: 'Explore' }), agentId: 'a1' },
+    { ...ev(3000, 'SubagentStop', {}), agentId: 'a2' },
+  ]);
+  assert.deepEqual(s.agents, [{ id: 'a1', name: 'Explore' }, { id: 'a2', name: 'a2' }]);
+});
+
+test('layoutTree: proyectos sin solaparse, vivas en el centro y subagentes como radios', () => {
+  const ses = (id, project, live, agents = 0) =>
+    ({ id, project, live, agents: Array.from({ length: agents }, (_, i) => ({ id: id + i, name: '' })) });
+  const list = [
+    ses('a', 'uno', true, 3), ses('b', 'uno', false), ses('c', 'uno', false, 12),
+    ses('d', 'dos', false), ...Array.from({ length: 20 }, (_, i) => ses('e' + i, 'tres', false)),
+  ];
+  const t = layoutTree(list, (s) => s.live);
+  assert.equal(t.projects.length, 3);
+  for (const p of t.projects) {
+    for (const q of t.projects) if (p !== q) assert.ok(Math.hypot(p.x - q.x, p.y - q.y) >= p.r + q.r, `${p.name} pisa ${q.name}`);
+    assert.ok(p.x - p.r > 0 && p.y - p.r > 0 && p.x + p.r < t.width && p.y + p.r < t.height, `${p.name} se sale`);
+  }
+  const uno = t.projects.find((p) => p.name === 'uno');
+  const a = uno.sessions.find((s) => s.id === 'a');
+  assert.deepEqual([a.live, a.x, a.y, a.agents.length], [true, uno.x, uno.y, 3]);
+  const b = uno.sessions.find((s) => s.id === 'b');
+  assert.ok(Math.abs(Math.hypot(b.x - uno.x, b.y - uno.y) - uno.r) < 1e-6, 'las no vivas van en el borde');
+  const c = uno.sessions.find((s) => s.id === 'c');
+  assert.deepEqual([c.agents.length, c.more], [10, 2]);
+  // Con muchas sesiones el círculo crece para que no se pisen.
+  assert.ok(t.projects.find((p) => p.name === 'tres').r > t.projects.find((p) => p.name === 'dos').r);
+  assert.deepEqual(layoutTree([], () => false), { width: 0, height: 0, projects: [] });
 });
