@@ -1,4 +1,4 @@
-import { COLORS, NO_TOKENS, rowColor, buildRows, buildLanes, packDots, summarizeSession, formatDuration, formatTokens, inputTotal } from './derive.js';
+import { COLORS, NO_TOKENS, rowColor, buildRows, buildLanes, packDots, summarizeSession, layoutTree, formatDuration, formatTokens, inputTotal } from './derive.js';
 
 // Iconos lucide de la maqueta (rocket, file-text, zap, wrench, book-open, file-pen).
 const ICONS = {
@@ -35,7 +35,6 @@ const state = {
   search: '',
   open: new Map(), // id de fila → pestaña abierta ('cmd' | 'out')
   collapsed: new Set(JSON.parse(load('collapsed', '[]'))),
-  follow: true, // seguir la sesión más reciente hasta que el usuario elija otra
   agent: null, // filtro por agente (clic en un carril de actividad)
   act: null, // datos de la última actividad pintada (para repintarla al redimensionar)
   hasRunning: false, // hay alguna herramienta en curso (activa el refresco por segundo)
@@ -72,18 +71,17 @@ async function refreshSessions() {
   const data = await getJson('/api/sessions');
   state.serverOffset = data.now - Date.now();
   state.sessions = data.sessions;
+  // Sin sesión en la URL se ve la portada (el árbol de todos los proyectos).
   const fromHash = decodeURIComponent(location.hash.slice(1));
-  if (fromHash && state.sessions.some((s) => s.id === fromHash)) {
-    if (state.selected !== fromHash) { state.follow = false; await select(fromHash, false); return; }
-  } else if (state.follow && state.sessions[0] && state.sessions[0].id !== state.selected) {
-    await select(state.sessions[0].id, false);
+  if (fromHash && fromHash !== state.selected && state.sessions.some((s) => s.id === fromHash)) {
+    await select(fromHash, false);
     return;
   }
-  renderSidebar();
+  if (state.selected) renderSidebar(); else render();
 }
 
 async function select(id, manual = true) {
-  if (manual) { state.follow = false; history.replaceState(null, '', '#' + encodeURIComponent(id)); }
+  if (manual) history.pushState(null, '', '#' + encodeURIComponent(id));
   state.selected = id;
   state.agent = null;
   state.open.clear();
@@ -100,6 +98,16 @@ async function loadEvents(id) {
   const ids = new Set(data.events.map((e) => e.id));
   state.events = data.events.concat(state.events.filter((e) => !ids.has(e.id)));
   state.tokens = data.tokens ?? NO_TOKENS;
+  render();
+}
+
+function goHome(push = true) {
+  if (push) history.pushState(null, '', location.pathname + location.search);
+  state.selected = null;
+  state.events = [];
+  state.tokens = NO_TOKENS;
+  state.summary = null;
+  state.hasRunning = false;
   render();
 }
 
@@ -165,6 +173,10 @@ function visibleRows(all, end) {
 
 function render() {
   renderSidebar();
+  const home = !state.selected;
+  $('main').classList.toggle('is-home', home);
+  $('home').hidden = !home;
+  if (home) return renderHome();
   const summary = state.selected ? summarizeSession(state.selected, state.events) : null;
   const all = buildRows(state.events, { now: now(), tokens: state.tokens.byTool });
   const running = all.filter((r) => r.running);
@@ -223,6 +235,57 @@ function render() {
       : 'Aún no ha llegado ningún evento. Apunta los hooks de Claude Code a <code>' + esc(location.origin) + '/api/hooks</code> (ver README).';
   }
 }
+
+// ---------- Portada ----------
+// Como la portada de agent-observe: un círculo por proyecto con sus sesiones
+// en el borde, las vivas en el centro y los subagentes como radios.
+function renderHome() {
+  const n = state.sessions.length;
+  $('path').textContent = n ? `Todos los proyectos · ${n} ${n === 1 ? 'sesión' : 'sesiones'}` : '';
+  $('title').textContent = 'Sesiones recientes';
+  $('hash').hidden = true;
+  renderWatching();
+  if (!n) {
+    $('home-tree').innerHTML = '<div class="empty">Aún no ha llegado ningún evento. Apunta los hooks de Claude Code a <code>' + esc(location.origin) + '/api/hooks</code> (ver README).</div>';
+    return;
+  }
+  const byId = new Map(state.sessions.map((s) => [s.id, s]));
+  const tree = layoutTree(state.sessions, isLive);
+  const f = (v) => v.toFixed(1);
+  const svg = tree.projects.map((p) => {
+    const live = p.sessions.some((s) => s.live);
+    const nodes = p.sessions.map((t) => {
+      const s = byId.get(t.id);
+      const spokes = t.agents.map((a) => `<line class="spoke" x1="${f(t.x)}" y1="${f(t.y)}" x2="${f(a.x)}" y2="${f(a.y)}"/><circle class="sub" cx="${f(a.x)}" cy="${f(a.y)}" r="3"/>`).join('');
+      const label = t.live ? (s.title.length > 30 ? s.title.slice(0, 29) + '…' : s.title) : s.hash;
+      const subs = s.agents.length;
+      const tip = `${s.title} · ${s.hash} · ${s.count} eventos${subs ? ` · ${subs} ${subs === 1 ? 'subagente' : 'subagentes'}` : ''}${t.live ? ' · viva' : ''}`;
+      return `<g class="t-node ${t.live ? 'live' : ''}" data-session="${esc(t.id)}" tabindex="0" role="link" aria-label="${esc(tip)}">
+        <title>${esc(tip)}</title>${spokes}
+        ${t.live ? `<circle class="ring" cx="${f(t.x)}" cy="${f(t.y)}" r="13"/>` : ''}
+        <circle class="dot" cx="${f(t.x)}" cy="${f(t.y)}" r="${t.live ? 13 : 9}"/>
+        ${t.more ? `<text class="more" x="${f(t.x)}" y="${f(t.y + 3)}">+${t.more}</text>` : ''}
+        <text class="lbl" x="${f(t.lx)}" y="${f(t.ly)}" text-anchor="${t.anchor}">${esc(label)}</text></g>`;
+    }).join('');
+    return `<g><circle class="t-project ${live ? 'has-live' : ''}" cx="${f(p.x)}" cy="${f(p.y)}" r="${f(p.r)}"/>
+      <text class="t-pname ${live ? 'has-live' : ''}" x="${f(p.x)}" y="${f(p.y - p.r - 30)}">${esc(p.name)}</text>
+      <text class="t-pcount" x="${f(p.x)}" y="${f(p.y - p.r - 15)}">${p.sessions.length} ${p.sessions.length === 1 ? 'sesión' : 'sesiones'}</text>${nodes}</g>`;
+  }).join('');
+  $('home-tree').innerHTML = `<svg viewBox="0 0 ${f(tree.width)} ${f(tree.height)}" width="${f(tree.width)}" role="img" aria-label="Árbol de proyectos y sesiones">${svg}</svg>`;
+}
+
+document.querySelector('.brand').addEventListener('click', (e) => {
+  e.preventDefault();
+  if (state.selected) goHome();
+});
+$('home-tree').addEventListener('click', (e) => {
+  const n = e.target.closest('[data-session]');
+  if (n) select(n.dataset.session);
+});
+$('home-tree').addEventListener('keydown', (e) => {
+  const n = e.target.closest('[data-session]');
+  if (n && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); select(n.dataset.session); }
+});
 
 // ---------- Actividad ----------
 // Como en agent-observe: un carril por agente con sus iconos en el tiempo.
@@ -427,10 +490,14 @@ $('rows').addEventListener('click', (e) => {
 $('export').addEventListener('click', () => {
   if (state.selected) location.href = `/api/sessions/${encodeURIComponent(state.selected)}/events?download=1`;
 });
-window.addEventListener('hashchange', () => {
+// Enlaces (#id), el logo (#) y los botones atrás/adelante del navegador.
+function fromLocation() {
   const id = decodeURIComponent(location.hash.slice(1));
-  if (id && id !== state.selected) select(id);
-});
+  if (!id) { if (state.selected) goHome(false); }
+  else if (id !== state.selected) select(id, false);
+}
+window.addEventListener('hashchange', fromLocation);
+window.addEventListener('popstate', fromLocation);
 
 // ---------- Vivo ----------
 let sessionsTimer = null;
@@ -468,9 +535,9 @@ function scheduleRender() {
 let ticks = 0;
 setInterval(() => {
   ticks++;
-  if (ticks % 15 === 0) { if (state.selected) render(); else { renderSidebar(); renderWatching(); } }
+  if (ticks % 15 === 0) render();
   else if (state.hasRunning) renderDuration();
 }, 1000);
 
-refreshSessions().then(() => { if (!state.selected) render(); }).catch(console.error);
+refreshSessions().catch(console.error);
 connect();

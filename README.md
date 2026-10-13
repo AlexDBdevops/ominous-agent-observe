@@ -12,6 +12,8 @@ docker compose up -d --build
 
 Abre <http://127.0.0.1:4982>. Por defecto solo escucha en localhost (ver `.env.example` para cambiar puerto o interfaz).
 
+La portada es un árbol de todo lo que se ha ejecutado: un círculo por proyecto, sus sesiones en el borde, las vivas en el centro y los subagentes como radios. Un clic abre la sesión; el logo vuelve a la portada.
+
 Para ver la vista con datos de ejemplo sin tocar Claude Code:
 
 ```bash
