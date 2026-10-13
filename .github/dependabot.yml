@@ -1,0 +1,17 @@
+version: 2
+# Cada mes, PRs con versiones nuevas de lo que usa el proyecto. cooldown: solo versiones publicadas
+# hace al menos 7 días, para no coger una recién comprometida antes de que se detecte.
+# npm no aparece: package.json no tiene dependencias.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+    cooldown: { default-days: 7 }
+  - package-ecosystem: docker       # imagen base node del Dockerfile
+    directory: /
+    schedule: { interval: monthly }
+    cooldown: { default-days: 7 }
+  - package-ecosystem: pip          # zizmor
+    directory: /tools/ci
+    schedule: { interval: monthly }
+    cooldown: { default-days: 7 }

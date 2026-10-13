@@ -1,0 +1,84 @@
+name: ci
+# Comprobaciones de cada PR y de main. No hay despliegue: el proyecto corre en local con docker compose.
+#
+#   test      tests en Node 22 (mínimo de package.json) y 24 (el del Dockerfile)
+#   audit     zizmor revisa la seguridad de los workflows
+#   docker    construye la imagen, la arranca con una prueba de humo y la escanea con Trivy
+on:
+  push: { branches: [main] }
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+# Permisos mínimos del GITHUB_TOKEN: solo lectura del código
+permissions: { contents: read }
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      # Acciones fijadas por SHA (v7.0.1, v7.0.0); Dependabot las mantiene al día
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { persist-credentials: false }
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with: { node-version: "${{ matrix.node }}" }
+      - name: Syntax and tests
+        run: |
+          for f in server/*.js public/*.js scripts/*.js; do node --check "$f"; done
+          npm test
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { persist-credentials: false }
+      - name: Audit workflows
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          # Versión e integridad fijadas en tools/ci/requirements.txt; Dependabot propone las nuevas
+          python3 -m pip install --quiet --require-hashes --no-deps -r tools/ci/requirements.txt
+          zizmor .github/workflows/
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: test
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { persist-credentials: false }
+      - name: Build image
+        run: docker build -t observe:ci .
+      - name: Smoke test
+        run: |
+          # Igual que docker compose: publicada solo en localhost
+          docker run -d --name observe -p 127.0.0.1:4982:4982 observe:ci
+          trap 'docker logs observe; docker rm -f observe >/dev/null' EXIT
+          B=http://127.0.0.1:4982
+          for i in $(seq 1 20); do curl -fs "$B/api/health" >/dev/null && break; sleep 1; done
+          curl -fs "$B/api/health" | grep -q '"ok":true'
+          # Un evento de hook entra y aparece su sesión
+          curl -fs -X POST "$B/api/hooks" -H 'content-type: application/json' \
+            -d '{"session_id":"ci","hook_event_name":"SessionStart","cwd":"/tmp/ci","source":"startup"}' >/dev/null
+          curl -fs "$B/api/sessions" | grep -q '"id":"ci"'
+          # La vista se sirve
+          curl -fs "$B/" | grep -qi '<html'
+          # Protecciones: Host ajeno (DNS rebinding) y escritura sin JSON
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' "$B/api/sessions")" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: text/plain' -d x "$B/api/hooks")" = 415
+          echo "Prueba de humo superada" >> "$GITHUB_STEP_SUMMARY"
+      - name: Scan image (Trivy)
+        run: |
+          # Imagen exportada en un tar: Trivy no necesita el socket de Docker
+          docker save -o image.tar observe:ci
+          docker run --rm -v "$PWD/image.tar:/image.tar:ro" aquasec/trivy:0.75.0 image \
+            --input /image.tar --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 --no-progress

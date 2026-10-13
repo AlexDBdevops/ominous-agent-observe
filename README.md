@@ -82,6 +82,14 @@ npm test
 
 API: `GET /api/health`, `GET /api/sessions`, `GET /api/sessions/:id/events` (`?download=1` para exportar), `GET /api/sessions/:id/tokens`, `GET /api/stream` (SSE).
 
+### CI
+
+No hay despliegue: el proyecto corre en local. GitHub Actions comprueba cada PR y `main`:
+
+- `ci`: tests en Node 22 y 24; zizmor sobre los workflows; imagen Docker con prueba de humo (salud, ingesta de un hook, bloqueo de Host ajeno y de escritura sin JSON) y escaneo Trivy de vulnerabilidades altas y críticas.
+- `codeql`: análisis de seguridad del código, también una vez por semana. Solo corre con el repo público.
+- Dependabot abre cada mes PRs para las acciones, la imagen base de Node y zizmor, solo con versiones publicadas hace al menos 7 días. Todo va fijado por SHA, digest o hash.
+
 ## Licencia
 
 MIT © 2026 AlexDBdevops. Ver `LICENSE`.
