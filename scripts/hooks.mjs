@@ -1,0 +1,128 @@
+// Instala o quita los hooks de Claude Code que alimentan observe.
+//
+//   npm run hooks:install                      añade los hooks a ~/.claude/settings.json
+//   npm run hooks:uninstall                    los quita
+//   node scripts/hooks.mjs install --dry-run   enseña qué cambiaría, sin escribir nada
+//   node scripts/hooks.mjs install --url http://127.0.0.1:5000   otro puerto
+//
+// - Eventos: hooks `http` que mandan el payload a POST /api/hooks.
+// - Tokens: hook `command` en Stop y SubagentStop que ejecuta
+//   hooks/observe-tokens.mjs (copiado a ~/.claude/hooks/) y manda solo números.
+// No toca otros hooks, no duplica los que ya existen y guarda una copia de
+// seguridad de settings.json antes de escribir. CLAUDE_CONFIG_DIR cambia la carpeta.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+export const EVENT_HOOKS = ['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'InstructionsLoaded', 'PreToolUse', 'PostToolUse',
+  'PostToolUseFailure', 'Stop', 'SubagentStart', 'SubagentStop'];
+export const TOKEN_HOOKS = ['Stop', 'SubagentStop'];
+const TOOL_HOOKS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure']);
+export const SCRIPT_NAME = 'ominous-observe-tokens.mjs';
+
+const isOurHttp = (h, url) => h?.type === 'http' && h.url === url + '/api/hooks';
+const isOurCommand = (h) => h?.type === 'command' && typeof h.command === 'string' && h.command.includes(SCRIPT_NAME);
+const isOurs = (h, url) => isOurHttp(h, url) || isOurCommand(h);
+
+/** Comando del hook de tokens (barras normales: vale en bash y en Windows). */
+export const tokenCommand = (scriptPath, url) => `node "${scriptPath.replace(/\\/g, '/')}" ${url}`;
+
+/**
+ * Devuelve { settings, added } con los hooks de observe añadidos a `settings`
+ * (no lo modifica). Si un hook igual ya existe en ese evento, no lo repite.
+ */
+export function installHooks(settings, { url, scriptPath }) {
+  const out = structuredClone(settings ?? {});
+  out.hooks ??= {};
+  const added = [];
+  const ensure = (event, hook, label) => {
+    const groups = (out.hooks[event] ??= []);
+    const exists = groups.some((g) => (g.hooks ?? []).some((h) => (hook.type === 'http' ? isOurHttp(h, url) : isOurCommand(h))));
+    if (exists) return;
+    groups.push(TOOL_HOOKS.has(event) ? { matcher: '*', hooks: [hook] } : { hooks: [hook] });
+    added.push(`${event}: ${label}`);
+  };
+  for (const ev of EVENT_HOOKS) ensure(ev, { type: 'http', url: url + '/api/hooks', timeout: 2 }, 'eventos (http)');
+  for (const ev of TOKEN_HOOKS) ensure(ev, { type: 'command', command: tokenCommand(scriptPath, url), timeout: 10 }, 'tokens (command)');
+  return { settings: out, added };
+}
+
+/** Devuelve { settings, removed } sin los hooks de observe (y sin grupos o eventos que queden vacíos). */
+export function uninstallHooks(settings, { url }) {
+  const out = structuredClone(settings ?? {});
+  const removed = [];
+  for (const [event, groups] of Object.entries(out.hooks ?? {})) {
+    if (!Array.isArray(groups)) continue;
+    const kept = [];
+    for (const g of groups) {
+      const hooks = (g.hooks ?? []).filter((h) => {
+        if (!isOurs(h, url)) return true;
+        removed.push(`${event}: ${h.type === 'http' ? 'eventos (http)' : 'tokens (command)'}`);
+        return false;
+      });
+      if (hooks.length) kept.push({ ...g, hooks });
+    }
+    if (kept.length) out.hooks[event] = kept;
+    else delete out.hooks[event];
+  }
+  if (out.hooks && !Object.keys(out.hooks).length) delete out.hooks;
+  return { settings: out, removed };
+}
+
+function main() {
+  const [action] = process.argv.slice(2);
+  const flag = (name) => { const i = process.argv.indexOf('--' + name); return i > -1 ? process.argv[i + 1] : null; };
+  const dryRun = process.argv.includes('--dry-run');
+  const url = (flag('url') || process.env.OBSERVE_URL || 'http://127.0.0.1:4982').replace(/\/$/, '');
+  if (!['install', 'uninstall'].includes(action) || !/^https?:\/\/[^\s"]+$/.test(url)) {
+    console.error('Uso: node scripts/hooks.mjs install|uninstall [--dry-run] [--url http://127.0.0.1:4982]');
+    process.exit(2);
+  }
+
+  const configDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+  const settingsFile = path.join(configDir, 'settings.json');
+  const scriptPath = path.join(configDir, 'hooks', SCRIPT_NAME);
+
+  let settings = {};
+  if (fs.existsSync(settingsFile)) {
+    try {
+      settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    } catch (err) {
+      console.error(`No se puede leer ${settingsFile} (${err.message}). No se ha cambiado nada.`);
+      process.exit(1);
+    }
+  }
+
+  const result = action === 'install' ? installHooks(settings, { url, scriptPath }) : uninstallHooks(settings, { url });
+  const changes = action === 'install' ? result.added : result.removed;
+  console.log(`${settingsFile}`);
+  console.log(changes.length ? changes.map((c) => `  ${action === 'install' ? '+' : '-'} ${c}`).join('\n') : '  (sin cambios: ya estaba así)');
+  if (dryRun) { console.log('\n--dry-run: no se ha escrito nada.'); return; }
+
+  if (action === 'install') {
+    // El script se copia: el hook sigue funcionando aunque muevas o borres el repo.
+    const source = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'observe-tokens.mjs');
+    fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
+    fs.copyFileSync(source, scriptPath);
+    console.log(`  script de tokens → ${scriptPath}`);
+  } else if (fs.existsSync(scriptPath)) {
+    fs.rmSync(scriptPath);
+    console.log(`  script de tokens borrado de ${scriptPath}`);
+  }
+
+  if (changes.length) {
+    if (fs.existsSync(settingsFile)) {
+      const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
+      fs.copyFileSync(settingsFile, `${settingsFile}.bak-${stamp}`);
+      console.log(`  copia de seguridad → ${settingsFile}.bak-${stamp}`);
+    }
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(settingsFile, JSON.stringify(result.settings, null, 2) + '\n');
+  }
+  console.log(action === 'install'
+    ? '\nListo. Las sesiones nuevas de Claude Code ya envían eventos; los tokens llegan al terminar cada turno (necesita Node en el equipo).'
+    : '\nListo. Las sesiones nuevas de Claude Code ya no envían nada a observe.');
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main();

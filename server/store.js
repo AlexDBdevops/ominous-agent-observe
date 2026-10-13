@@ -1,6 +1,7 @@
 // Almacén de eventos: en memoria + volcado append-only a JSONL.
 import fs from 'node:fs';
 import path from 'node:path';
+import { minimizePayload } from './privacy.js';
 
 const MAX_STRING = 16 * 1024;
 
@@ -22,8 +23,10 @@ export function truncateDeep(value, max = MAX_STRING) {
  * Normaliza a un registro interno. Acepta:
  * - el sobre de agent-observe: { agentClass, sessionId, agentId, hookName, cwd, payload, timestamp? }
  * - el payload crudo de un hook de Claude Code: { session_id, hook_event_name, cwd, ... }
+ * Con detail 'minimo' (por defecto) solo se guarda lo que enseña la vista; con
+ * 'completo', el payload entero (recortando strings enormes).
  */
-export function normalize(body, now = Date.now()) {
+export function normalize(body, now = Date.now(), { detail = 'minimo' } = {}) {
   if (!body || typeof body !== 'object') return null;
   const isEnvelope = body.payload && typeof body.payload === 'object' && (body.hookName || body.sessionId);
   const payload = isEnvelope ? body.payload : body;
@@ -38,13 +41,17 @@ export function normalize(body, now = Date.now()) {
     agentClass: (isEnvelope ? body.agentClass : null) ?? 'claude-code',
     hookName: String(hookName),
     cwd: (isEnvelope ? body.cwd : null) ?? payload.cwd ?? null,
-    payload: truncateDeep(payload),
+    payload: detail === 'completo' ? truncateDeep(payload) : minimizePayload(String(hookName), payload),
   };
 }
 
+const DAY = 86400e3;
+
 export class Store {
-  constructor({ dataDir = null, maxEvents = 50000 } = {}) {
+  constructor({ dataDir = null, maxEvents = 50000, retentionDays = 14, detail = 'minimo' } = {}) {
     this.events = [];
+    this.retentionMs = retentionDays > 0 ? retentionDays * DAY : 0;
+    this.detail = detail;
     this.bySession = new Map();
     this.nextId = 1;
     this.maxEvents = maxEvents;
@@ -60,17 +67,37 @@ export class Store {
   load() {
     if (!fs.existsSync(this.file)) return;
     const lines = fs.readFileSync(this.file, 'utf8').split('\n').filter((l) => l.trim());
+    const since = this.retentionMs ? Date.now() - this.retentionMs : 0;
+    let dropped = lines.length > this.maxEvents;
     // Solo caben maxEvents en memoria: los anteriores ni se procesan.
     for (const line of lines.slice(-this.maxEvents)) {
-      try {
-        this.insert(JSON.parse(line), false);
-      } catch {
-        // línea corrupta (p. ej. corte a mitad de escritura): se ignora
-      }
+      let rec;
+      try { rec = JSON.parse(line); } catch { dropped = true; continue; } // línea cortada a mitad de escritura
+      if (rec.ts < since) { dropped = true; continue; }
+      // Eventos guardados por una versión anterior o con detail=completo: se
+      // reducen igual que los nuevos.
+      if (this.detail !== 'completo') rec.payload = minimizePayload(rec.hookName, rec.payload);
+      this.insert(rec, false);
     }
-    // En memoria solo caben maxEvents; si el fichero ya guarda bastantes más,
-    // se reescribe con los que quedan para que no crezca sin límite.
-    if (lines.length > this.maxEvents * 1.2) this.compact();
+    // Se reescribe el fichero con lo que queda: sin caducados, sin lo que no
+    // cabe en memoria y, por defecto, con los payloads reducidos.
+    if (dropped || this.detail !== 'completo') this.compact();
+  }
+
+  /** Quita los eventos más antiguos que la retención y reescribe el fichero. */
+  prune(now = Date.now()) {
+    if (!this.retentionMs || !this.events.length || this.events[0].ts >= now - this.retentionMs) return 0;
+    const since = now - this.retentionMs;
+    const before = this.events.length;
+    this.events = this.events.filter((ev) => ev.ts >= since);
+    this.bySession = new Map();
+    for (const ev of this.events) {
+      let list = this.bySession.get(ev.sessionId);
+      if (!list) this.bySession.set(ev.sessionId, (list = []));
+      list.push(ev);
+    }
+    if (this.file) this.compact();
+    return before - this.events.length;
   }
 
   compact() {

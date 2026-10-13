@@ -28,7 +28,7 @@ const state = {
   sessions: [],
   selected: null,
   events: [],
-  tokens: NO_TOKENS, // del transcript de la sesión
+  tokens: NO_TOKENS, // los envía el hook de tokens al terminar cada turno
   serverOffset: 0, // reloj del servidor - reloj local
   range: load('range', '24h'),
   filter: 'all',
@@ -206,10 +206,10 @@ function render() {
   const tt = state.tokens.totals;
   $('st-tok').innerHTML = state.tokens.available && tt
     ? `${formatTokens(inputTotal(tt))} <small>· ${formatTokens(tt.output)} sal</small>`
-    : '— <small>sin transcript</small>';
+    : '— <small>sin datos</small>';
   $('st-tok').title = state.tokens.available && tt
     ? `${tokenBreakdown(tt)} (${tt.messages} mensajes del modelo)`
-    : 'No se pudo leer el transcript de la sesión (ver README: tokens)';
+    : 'Sin datos de tokens: llegan al terminar cada turno si está instalado el hook (npm run hooks:install, ver README)';
 
   // Actividad (rango completo, todos los agentes, sin filtros de tipo)
   const t0 = end - span;
@@ -412,7 +412,7 @@ function renderWatching() {
 // lanzó varias en paralelo, los comparten (se marca con ≈).
 function tokenCell(r) {
   const t = r.tokens;
-  if (!t) return `<span class="tok none" title="${r.isTool ? 'Aún sin tokens (se leen del transcript)' : 'Solo las herramientas tienen tokens'}">—</span>`;
+  if (!t) return `<span class="tok none" title="${r.isTool ? 'Aún sin tokens (llegan al terminar el turno)' : 'Solo las herramientas tienen tokens'}">—</span>`;
   const title = tokenBreakdown(t) + (t.shared > 1 ? ` · mensaje compartido por ${t.shared} herramientas` : '');
   return `<span class="tok" title="${esc(title)}">${t.shared > 1 ? '<span class="shared">≈</span>' : ''}<span class="tin">${formatTokens(inputTotal(t))}</span><span class="sep">·</span><span class="tout">${formatTokens(t.output)}</span></span>`;
 }
@@ -422,18 +422,13 @@ function tokenBreakdown(t) {
   return `Entrada ${formatTokens(inputTotal(t))} (sin caché ${formatTokens(t.input)} · caché leída ${formatTokens(t.cacheRead)} · caché escrita ${formatTokens(t.cacheWrite)}) · salida ${formatTokens(t.output)}`;
 }
 
-// Los tokens salen del transcript, que Claude Code escribe un instante
-// después del hook: se piden con un pequeño retraso tras cada evento.
-let tokensTimer = null;
-function scheduleTokens() {
-  clearTimeout(tokensTimer);
-  const id = state.selected;
-  tokensTimer = setTimeout(async () => {
-    try {
-      const t = await getJson(`/api/sessions/${encodeURIComponent(id)}/tokens`);
-      if (state.selected === id) { state.tokens = t; render(); }
-    } catch (err) { console.error(err); }
-  }, 1200);
+// Los tokens los envía el hook del equipo al terminar cada turno; el servidor
+// avisa por el stream y aquí se piden los de la sesión abierta.
+async function refreshTokens(id) {
+  try {
+    const t = await getJson(`/api/sessions/${encodeURIComponent(id)}/tokens`);
+    if (state.selected === id) { state.tokens = t; scheduleRender(); }
+  } catch (err) { console.error(err); }
 }
 
 function rowHtml(r, maxDur) {
@@ -509,10 +504,13 @@ function connect() {
     if (ev.sessionId === state.selected && !state.events.some((e) => e.id === ev.id)) {
       state.events.push(ev);
       scheduleRender();
-      scheduleTokens();
     }
     clearTimeout(sessionsTimer);
     sessionsTimer = setTimeout(() => refreshSessions().catch(console.error), 300);
+  });
+  es.addEventListener('tokens', (msg) => {
+    const { sessionId } = JSON.parse(msg.data);
+    if (sessionId === state.selected) refreshTokens(sessionId);
   });
   es.onerror = () => { es.close(); setTimeout(connect, 3000); };
   // Al (re)conectar se recarga todo: lo que pasó con el stream caído no llegó.

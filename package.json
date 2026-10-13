@@ -9,6 +9,8 @@
   "scripts": {
     "start": "node server/index.js",
     "demo": "node scripts/demo.js",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "hooks:install": "node scripts/hooks.mjs install",
+    "hooks:uninstall": "node scripts/hooks.mjs uninstall"
   }
 }
