@@ -84,11 +84,15 @@ function main() {
   const settingsFile = path.join(configDir, 'settings.json');
   const scriptPath = path.join(configDir, 'hooks', SCRIPT_NAME);
 
+  // Se lee una sola vez y con ese mismo texto se hace la copia de seguridad,
+  // sin comprobar antes si existe (evita carreras con otro proceso).
+  let raw = null;
   let settings = {};
-  if (fs.existsSync(settingsFile)) {
-    try {
-      settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-    } catch (err) {
+  try {
+    raw = fs.readFileSync(settingsFile, 'utf8');
+    settings = JSON.parse(raw);
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
       console.error(`No se puede leer ${settingsFile} (${err.message}). No se ha cambiado nada.`);
       process.exit(1);
     }
@@ -106,19 +110,26 @@ function main() {
     fs.mkdirSync(path.dirname(scriptPath), { recursive: true });
     fs.copyFileSync(source, scriptPath);
     console.log(`  script de tokens → ${scriptPath}`);
-  } else if (fs.existsSync(scriptPath)) {
-    fs.rmSync(scriptPath);
-    console.log(`  script de tokens borrado de ${scriptPath}`);
+  } else {
+    try {
+      fs.unlinkSync(scriptPath);
+      console.log(`  script de tokens borrado de ${scriptPath}`);
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
   }
 
   if (changes.length) {
-    if (fs.existsSync(settingsFile)) {
+    fs.mkdirSync(configDir, { recursive: true });
+    if (raw !== null) {
       const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
-      fs.copyFileSync(settingsFile, `${settingsFile}.bak-${stamp}`);
+      fs.writeFileSync(`${settingsFile}.bak-${stamp}`, raw, { flag: 'wx' });
       console.log(`  copia de seguridad → ${settingsFile}.bak-${stamp}`);
     }
-    fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(settingsFile, JSON.stringify(result.settings, null, 2) + '\n');
+    // Escritura atómica: un temporal que sustituye al original.
+    const tmp = `${settingsFile}.tmp-${process.pid}`;
+    fs.writeFileSync(tmp, JSON.stringify(result.settings, null, 2) + '\n', { flag: 'wx' });
+    fs.renameSync(tmp, settingsFile);
   }
   console.log(action === 'install'
     ? '\nListo. Las sesiones nuevas de Claude Code ya envían eventos; los tokens llegan al terminar cada turno (necesita Node en el equipo).'

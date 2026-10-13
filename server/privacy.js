@@ -42,18 +42,24 @@ const PLAIN = ['tool_name', 'tool_use_id', 'duration_ms', 'agent_id', 'agent_typ
 // Entradas de herramientas que son contenido de ficheros: nunca se guardan.
 const CONTENT_KEYS = new Set(['content', 'old_string', 'new_string', 'new_source', 'file_text', 'edits', 'old_str', 'new_str']);
 
+// Las claves de tool_input llegan de fuera: solo nombres de campo normales
+// (nada de __proto__ ni constructor) y como mucho 40.
+const KEY_RE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const RESERVED = new Set(['constructor', 'prototype']);
+
 function minimizeInput(input) {
   if (!input || typeof input !== 'object') return undefined;
-  const out = {};
-  for (const [k, v] of Object.entries(input)) {
+  const out = new Map();
+  for (const [k, v] of Object.entries(input).slice(0, 40)) {
+    if (!KEY_RE.test(k) || RESERVED.has(k)) continue;
     if (CONTENT_KEYS.has(k)) {
-      if (typeof v === 'string') out[k + '_chars'] = v.length; // solo el tamaño
+      if (typeof v === 'string') out.set(k + '_chars', v.length); // solo el tamaño
       continue;
     }
-    if (typeof v === 'string') out[k] = keep(v, k === 'command' ? 2000 : 300, k === 'command' ? 40 : 4);
-    else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+    if (typeof v === 'string') out.set(k, keep(v, k === 'command' ? 2000 : 300, k === 'command' ? 40 : 4));
+    else if (typeof v === 'number' || typeof v === 'boolean') out.set(k, v);
   }
-  return out;
+  return Object.fromEntries(out);
 }
 
 // La salida se reduce a lo que muestra la tabla (12 líneas) y al resultado.

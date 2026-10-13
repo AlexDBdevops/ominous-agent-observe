@@ -90,3 +90,11 @@ test('Store reduce los eventos antiguos al cargar y aplica la caducidad', () => 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('minimizePayload ignora claves peligrosas que lleguen en tool_input', () => {
+  const input = JSON.parse('{"__proto__": {"admin": true}, "constructor": "x", "file_path": "/p/a.js", "a-b": "raro"}');
+  const out = minimizePayload('PreToolUse', { tool_name: 'Read', tool_input: input }).tool_input;
+  assert.deepEqual(Object.keys(out), ['file_path']);
+  assert.equal(Object.getPrototypeOf(out), Object.prototype);
+  assert.equal(({}).admin, undefined);
+});
