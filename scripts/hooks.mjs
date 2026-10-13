@@ -122,9 +122,18 @@ function main() {
   if (changes.length) {
     fs.mkdirSync(configDir, { recursive: true });
     if (raw !== null) {
+      // Nunca se pisa una copia anterior: si el nombre ya existe, se numera.
       const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '').replace('T', '-');
-      fs.writeFileSync(`${settingsFile}.bak-${stamp}`, raw, { flag: 'wx' });
-      console.log(`  copia de seguridad → ${settingsFile}.bak-${stamp}`);
+      for (let n = 0; ; n++) {
+        const backup = `${settingsFile}.bak-${stamp}${n ? '-' + n : ''}`;
+        try {
+          fs.writeFileSync(backup, raw, { flag: 'wx' });
+          console.log(`  copia de seguridad → ${backup}`);
+          break;
+        } catch (err) {
+          if (err.code !== 'EEXIST' || n > 100) throw err;
+        }
+      }
     }
     // Escritura atómica: un temporal que sustituye al original.
     const tmp = `${settingsFile}.tmp-${process.pid}`;
