@@ -127,6 +127,8 @@ function main() {
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
     }
+    // Estado de la lectura incremental (solo números de tokens).
+    fs.rmSync(path.join(path.dirname(scriptPath), '.observe-tokens-state'), { recursive: true, force: true });
   }
 
   if (changes.length) {

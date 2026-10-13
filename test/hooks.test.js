@@ -75,7 +75,10 @@ test('el comando instala con copia de seguridad y desinstala, sin tocar el ~/.cl
     assert.equal(fs.readdirSync(dir).filter((f) => f.startsWith('settings.json.bak-')).length, 1);
     assert.ok(!fs.readdirSync(dir).some((f) => f.includes('.tmp-')), 'no quedan temporales');
 
+    fs.mkdirSync(path.join(dir, 'hooks', '.observe-tokens-state'));
+    fs.writeFileSync(path.join(dir, 'hooks', '.observe-tokens-state', 'x.json'), '{}');
     execFileSync(process.execPath, [SCRIPT, 'uninstall'], { env });
+    assert.ok(!fs.existsSync(path.join(dir, 'hooks', '.observe-tokens-state')), 'borra también el estado del hook');
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')), { model: 'opus', hooks: { PreToolUse: existing.hooks.PreToolUse } });
     assert.ok(!fs.existsSync(path.join(dir, 'hooks', SCRIPT_NAME)));
     assert.equal(fs.readdirSync(dir).filter((f) => f.startsWith('settings.json.bak-')).length, 2, 'cada cambio deja su copia, sin pisar la anterior');

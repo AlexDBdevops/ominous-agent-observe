@@ -7,17 +7,17 @@
 // Uso (lo configura `npm run hooks:install`):
 //   node observe-tokens.mjs [http://127.0.0.1:4982]   ← payload del hook por stdin
 //
-// Se ejecuta tras cada herramienta, así que lee de forma incremental: guarda
-// en la carpeta temporal hasta qué byte leyó cada transcript (OBSERVE_TOKENS_STATE
-// cambia la carpeta). Si ese estado se pierde, se relee entero; no pasa nada.
+// Se ejecuta tras cada herramienta, así que lee de forma incremental: guarda en
+// .observe-tokens-state/, junto al script, hasta qué byte leyó cada transcript
+// (OBSERVE_TOKENS_STATE cambia la carpeta). Si ese estado se pierde, se relee
+// entero; no pasa nada.
 //
 // Sin dependencias (Node 22+). Nunca bloquea la sesión: ante cualquier fallo
 // termina en silencio con código 0 y sin escribir nada en stdout.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 /**
  * Tokens de un transcript (.jsonl de Claude Code):
@@ -75,7 +75,10 @@ export function sessionFiles(mainFile) {
   return [mainFile, ...subs];
 }
 
-const stateDir = () => process.env.OBSERVE_TOKENS_STATE || path.join(os.tmpdir(), 'ominous-observe-tokens');
+// Junto al script (~/.claude/hooks/ al instalarlo), en una carpeta solo del
+// usuario: la temporal del sistema es compartida y otro usuario podría
+// adelantarse a crear ahí el fichero o un enlace.
+const stateDir = () => process.env.OBSERVE_TOKENS_STATE || path.join(path.dirname(fileURLToPath(import.meta.url)), '.observe-tokens-state');
 const stateFile = (file) => path.join(stateDir(), crypto.createHash('sha1').update(path.resolve(file)).digest('hex') + '.json');
 
 /**
@@ -83,17 +86,25 @@ const stateFile = (file) => path.join(stateDir(), crypto.createHash('sha1').upda
  * vez. El estado guarda el byte leído y, por mensaje, su usage y sus tool_use.
  */
 export function readIncremental(file) {
-  let st;
-  try { st = fs.statSync(file); } catch { return null; }
-  let state = { offset: 0, messages: [] };
-  try { state = JSON.parse(fs.readFileSync(stateFile(file), 'utf8')); } catch { /* sin estado: desde el principio */ }
-  // Transcript reescrito o más corto que lo leído: se empieza de cero.
-  if (!(state.offset <= st.size)) state = { offset: 0, messages: [] };
+  // Se abre primero y el tamaño se mira sobre el fichero ya abierto: lo que se
+  // mide es exactamente lo que se lee.
+  let fd;
+  try { fd = fs.openSync(file, 'r'); } catch { return null; }
+  let size, buf, state = { offset: 0, messages: [] };
+  try {
+    size = fs.fstatSync(fd).size;
+    try { state = JSON.parse(fs.readFileSync(stateFile(file), 'utf8')); } catch { /* sin estado: desde el principio */ }
+    // Transcript reescrito o más corto que lo leído: se empieza de cero.
+    if (!(state.offset <= size) || !Array.isArray(state.messages)) state = { offset: 0, messages: [] };
+    if (size > state.offset) {
+      buf = Buffer.alloc(size - state.offset);
+      fs.readSync(fd, buf, 0, buf.length, state.offset);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
   const messages = new Map(state.messages.map(([id, m]) => [id, { usage: m.usage, tools: new Set(m.tools) }]));
-  if (st.size > state.offset) {
-    const buf = Buffer.alloc(st.size - state.offset);
-    const fd = fs.openSync(file, 'r');
-    try { fs.readSync(fd, buf, 0, buf.length, state.offset); } finally { fs.closeSync(fd); }
+  if (buf) {
     // Solo hasta el último salto de línea: una línea a medio escribir se relee
     // entera la próxima vez (y no se corta ningún carácter UTF-8).
     const end = buf.lastIndexOf(0x0a);
@@ -102,11 +113,12 @@ export function readIncremental(file) {
       state.offset += end + 1;
       const saved = { offset: state.offset, messages: [...messages].map(([id, m]) => [id, { usage: m.usage, tools: [...m.tools] }]) };
       try {
-        fs.mkdirSync(stateDir(), { recursive: true });
+        fs.mkdirSync(stateDir(), { recursive: true, mode: 0o700 });
         // Varios hooks pueden correr a la vez (herramientas en paralelo): cada
-        // uno escribe en su temporal y lo renombra, así nadie lee un estado a medias.
-        const tmp = `${stateFile(file)}.${process.pid}.tmp`;
-        fs.writeFileSync(tmp, JSON.stringify(saved));
+        // uno escribe en su temporal (nombre aleatorio, solo si no existe) y lo
+        // renombra, así nadie lee un estado a medias.
+        const tmp = `${stateFile(file)}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(saved), { flag: 'wx', mode: 0o600 });
         fs.renameSync(tmp, stateFile(file));
       } catch { /* sin estado se relee la próxima vez */ }
     }
