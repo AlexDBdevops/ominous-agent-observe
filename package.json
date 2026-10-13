@@ -1,6 +1,6 @@
 {
   "name": "ominous-agent-observe",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Vista propia para observar en vivo las sesiones de Claude Code a partir de sus hooks",
   "license": "MIT",
   "private": true,
