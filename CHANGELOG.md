@@ -1,6 +1,6 @@
 # Cambios
 
-## v0.1 (sin publicar)
+## v0.1.0 (2026-10-13)
 
 - Servidor de hooks de Claude Code (`POST /api/hooks`), compatible con el formato de agent-observe (`POST /api/events`).
 - Portada con el árbol de proyectos, sesiones y subagentes.
