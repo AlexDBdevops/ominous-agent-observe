@@ -28,7 +28,7 @@ const state = {
   sessions: [],
   selected: null,
   events: [],
-  tokens: NO_TOKENS, // los envía el hook de tokens al terminar cada turno
+  tokens: NO_TOKENS, // los envía el hook de tokens tras cada herramienta
   serverOffset: 0, // reloj del servidor - reloj local
   range: load('range', '24h'),
   filter: 'all',
@@ -209,7 +209,7 @@ function render() {
     : '— <small>sin datos</small>';
   $('st-tok').title = state.tokens.available && tt
     ? `${tokenBreakdown(tt)} (${tt.messages} mensajes del modelo)`
-    : 'Sin datos de tokens: llegan al terminar cada turno si está instalado el hook (npm run hooks:install, ver README)';
+    : 'Sin datos de tokens: llegan unos segundos después de cada herramienta si está instalado el hook (npm run hooks:install, ver README)';
 
   // Actividad (rango completo, todos los agentes, sin filtros de tipo)
   const t0 = end - span;
@@ -412,7 +412,7 @@ function renderWatching() {
 // lanzó varias en paralelo, los comparten (se marca con ≈).
 function tokenCell(r) {
   const t = r.tokens;
-  if (!t) return `<span class="tok none" title="${r.isTool ? 'Aún sin tokens (llegan al terminar el turno)' : 'Solo las herramientas tienen tokens'}">—</span>`;
+  if (!t) return `<span class="tok none" title="${r.isTool ? 'Aún sin tokens (llegan unos segundos después de la herramienta)' : 'Solo las herramientas tienen tokens'}">—</span>`;
   const title = tokenBreakdown(t) + (t.shared > 1 ? ` · mensaje compartido por ${t.shared} herramientas` : '');
   return `<span class="tok" title="${esc(title)}">${t.shared > 1 ? '<span class="shared">≈</span>' : ''}<span class="tin">${formatTokens(inputTotal(t))}</span><span class="sep">·</span><span class="tout">${formatTokens(t.output)}</span></span>`;
 }
@@ -422,7 +422,7 @@ function tokenBreakdown(t) {
   return `Entrada ${formatTokens(inputTotal(t))} (sin caché ${formatTokens(t.input)} · caché leída ${formatTokens(t.cacheRead)} · caché escrita ${formatTokens(t.cacheWrite)}) · salida ${formatTokens(t.output)}`;
 }
 
-// Los tokens los envía el hook del equipo al terminar cada turno; el servidor
+// Los tokens los envía el hook del equipo tras cada herramienta; el servidor
 // avisa por el stream y aquí se piden los de la sesión abierta.
 async function refreshTokens(id) {
   try {

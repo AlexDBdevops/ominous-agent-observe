@@ -7,6 +7,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseTranscript, sessionTokens } from '../hooks/observe-tokens.mjs';
+
+// El estado de la lectura incremental va a una carpeta de pruebas, no a la temporal real.
+process.env.OBSERVE_TOKENS_STATE = fs.mkdtempSync(path.join(os.tmpdir(), 'observe-state-'));
 import { sanitizeTokens, TokenStore } from '../server/tokens.js';
 import { buildRows, formatTokens, inputTotal } from '../public/derive.js';
 
@@ -49,6 +52,26 @@ test('sessionTokens suma el principal y los subagentes', () => {
     const t = sessionTokens(file);
     assert.equal(t.byTool.toolu_sub.output, 10);
     assert.equal(t.totals.messages, 3);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('sessionTokens lee solo lo nuevo y no cuenta líneas a medio escribir', () => {
+  const { root, file } = fakeProjects();
+  try {
+    assert.equal(sessionTokens(file).totals.messages, 3);
+    const next = line('m3', [{ type: 'tool_use', id: 'toolu_d' }], usage(1, 7, 0, 0));
+    fs.appendFileSync(file, next.slice(0, 20));
+    assert.equal(sessionTokens(file).totals.messages, 3, 'línea a medias: todavía no cuenta');
+    fs.appendFileSync(file, next.slice(20) + '\n');
+    const t = sessionTokens(file);
+    assert.equal(t.totals.messages, 4, 'ni se pierde ni se cuenta dos veces lo ya leído');
+    assert.equal(t.byTool.toolu_d.output, 7);
+    assert.equal(t.byTool.toolu_a.output, 237, 'lo leído antes sigue ahí');
+    // Transcript reescrito más corto: se vuelve a leer desde el principio.
+    fs.writeFileSync(file, line('z1', [{ type: 'tool_use', id: 'toolu_z' }], usage(1, 1, 0, 0)) + '\n');
+    assert.deepEqual(Object.keys(sessionTokens(file).byTool).sort(), ['toolu_sub', 'toolu_z']);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

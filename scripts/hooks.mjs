@@ -6,7 +6,7 @@
 //   node scripts/hooks.mjs install --url http://127.0.0.1:5000   otro puerto
 //
 // - Eventos: hooks `http` que mandan el payload a POST /api/hooks.
-// - Tokens: hook `command` en Stop y SubagentStop que ejecuta
+// - Tokens: hook `command` en segundo plano (async) en PostToolUse, Stop y SubagentStop que ejecuta
 //   hooks/observe-tokens.mjs (copiado a ~/.claude/hooks/) y manda solo números.
 // No toca otros hooks, no duplica los que ya existen y guarda una copia de
 // seguridad de settings.json antes de escribir. CLAUDE_CONFIG_DIR cambia la carpeta.
@@ -17,7 +17,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const EVENT_HOOKS = ['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'InstructionsLoaded', 'PreToolUse', 'PostToolUse',
   'PostToolUseFailure', 'Stop', 'SubagentStart', 'SubagentStop'];
-export const TOKEN_HOOKS = ['Stop', 'SubagentStop'];
+// Tras cada herramienta (tokens casi en vivo) y al final de cada turno.
+export const TOKEN_HOOKS = ['PostToolUse', 'Stop', 'SubagentStop'];
 const TOOL_HOOKS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure']);
 export const SCRIPT_NAME = 'ominous-observe-tokens.mjs';
 
@@ -30,7 +31,8 @@ export const tokenCommand = (scriptPath, url) => `node "${scriptPath.replace(/\\
 
 /**
  * Devuelve { settings, added } con los hooks de observe añadidos a `settings`
- * (no lo modifica). Si un hook igual ya existe en ese evento, no lo repite.
+ * (no lo modifica). Si un hook igual ya existe en ese evento, no lo repite; si
+ * es el de tokens de una versión anterior, lo pone al día en su sitio.
  */
 export function installHooks(settings, { url, scriptPath }) {
   const out = structuredClone(settings ?? {});
@@ -38,13 +40,21 @@ export function installHooks(settings, { url, scriptPath }) {
   const added = [];
   const ensure = (event, hook, label) => {
     const groups = (out.hooks[event] ??= []);
-    const exists = groups.some((g) => (g.hooks ?? []).some((h) => (hook.type === 'http' ? isOurHttp(h, url) : isOurCommand(h))));
-    if (exists) return;
+    for (const g of groups) {
+      const i = (g.hooks ?? []).findIndex((h) => (hook.type === 'http' ? isOurHttp(h, url) : isOurCommand(h)));
+      if (i === -1) continue;
+      if (JSON.stringify(g.hooks[i]) !== JSON.stringify(hook)) {
+        g.hooks[i] = hook;
+        added.push(`${event}: ${label}, actualizado`);
+      }
+      return;
+    }
     groups.push(TOOL_HOOKS.has(event) ? { matcher: '*', hooks: [hook] } : { hooks: [hook] });
     added.push(`${event}: ${label}`);
   };
   for (const ev of EVENT_HOOKS) ensure(ev, { type: 'http', url: url + '/api/hooks', timeout: 2 }, 'eventos (http)');
-  for (const ev of TOKEN_HOOKS) ensure(ev, { type: 'command', command: tokenCommand(scriptPath, url), timeout: 10 }, 'tokens (command)');
+  // En segundo plano: Claude sigue trabajando sin esperar a que termine.
+  for (const ev of TOKEN_HOOKS) ensure(ev, { type: 'command', command: tokenCommand(scriptPath, url), async: true }, 'tokens (command, async)');
   return { settings: out, added };
 }
 
@@ -141,7 +151,7 @@ function main() {
     fs.renameSync(tmp, settingsFile);
   }
   console.log(action === 'install'
-    ? '\nListo. Las sesiones nuevas de Claude Code ya envían eventos; los tokens llegan al terminar cada turno (necesita Node en el equipo).'
+    ? '\nListo. Las sesiones nuevas de Claude Code ya envían eventos; los tokens llegan unos segundos después de cada herramienta (necesita Node en el equipo).'
     : '\nListo. Las sesiones nuevas de Claude Code ya no envían nada a observe.');
 }
 

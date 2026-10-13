@@ -2,7 +2,7 @@
 
 ## Sin publicar
 
-- El container ya no monta `~/.claude/projects`: los tokens los manda un hook que corre en tu equipo (`hooks/observe-tokens.mjs`) y solo envía números a `POST /api/tokens`. Llegan al terminar cada turno.
+- El container ya no monta `~/.claude/projects`: los tokens los manda un hook que corre en tu equipo (`hooks/observe-tokens.mjs`) y solo envía números a `POST /api/tokens`. Corre en segundo plano tras cada herramienta (`"async": true`) y lee solo lo nuevo del transcript, así que los tokens siguen llegando casi en vivo sin frenar a Claude.
 - `npm run hooks:install` / `hooks:uninstall` añaden o quitan los hooks en `~/.claude/settings.json`, sin tocar los demás y con copia de seguridad.
 - Por defecto solo se guarda lo que enseña la vista (`OBSERVE_DETAIL=minimo`): salidas recortadas a 12 líneas, sin el contenido que escriben `Write` y `Edit` y con los secretos habituales tapados. Los eventos ya guardados se reducen al arrancar (un 80 % menos en una instalación real). `OBSERVE_DETAIL=completo` mantiene el comportamiento anterior.
 - Los eventos y sus tokens caducan a los 14 días (`OBSERVE_RETENTION_DAYS`).

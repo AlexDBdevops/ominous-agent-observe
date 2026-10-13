@@ -134,6 +134,11 @@ test('POST /api/tokens guarda los números, avisa por el stream y rechaza lo que
   assert.equal(t.available, true);
   assert.equal(t.byTool.toolu_x.output, 5);
   assert.equal((await post('/api/tokens', { ...body, totals: { ...body.totals, input: 'mucho' } })).status, 422);
+  // Una foto más antigua (menos mensajes) que llega tarde no pisa la nueva.
+  await post('/api/tokens', { ...body, totals: { ...body.totals, messages: 3 } });
+  const stale = await (await post('/api/tokens', { ...body, byTool: {}, totals: { ...body.totals, messages: 2 } })).json();
+  assert.ok(stale.ignored);
+  assert.equal((await (await fetch(base + '/api/sessions/tok1/tokens')).json()).totals.messages, 3);
   // Desde otra web no se puede escribir.
   const r = await fetch(base + '/api/tokens', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify(body) });
   assert.equal(r.status, 403);

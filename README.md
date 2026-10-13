@@ -35,7 +35,7 @@ npm run hooks:install
 Añade a `~/.claude/settings.json` los hooks que alimentan la vista, sin tocar los que ya tengas, y guarda antes una copia de seguridad (`settings.json.bak-…`). Instalarlo dos veces no duplica nada. Las sesiones nuevas de Claude Code ya aparecen en la vista.
 
 - **Eventos**: un hook `http` por evento (`SessionStart`, `PreToolUse`, `PostToolUse`, `Stop`, `SubagentStart`…) que manda el payload a `POST /api/hooks`.
-- **Tokens**: en `Stop` y `SubagentStop`, un hook `command` que ejecuta `hooks/observe-tokens.mjs` (se copia a `~/.claude/hooks/`, así que sigue funcionando aunque muevas el repo). Ver más abajo.
+- **Tokens**: en `PostToolUse`, `Stop` y `SubagentStop`, un hook `command` en segundo plano (`"async": true`, Claude no espera a que termine) que ejecuta `hooks/observe-tokens.mjs` (se copia a `~/.claude/hooks/`, así que sigue funcionando aunque muevas el repo). Ver más abajo.
 
 Otras opciones: `node scripts/hooks.mjs install --dry-run` enseña qué cambiaría sin escribir nada; `--url http://127.0.0.1:5000` usa otro puerto; `CLAUDE_CONFIG_DIR` cambia la carpeta de Claude Code. Para quitarlo todo: `npm run hooks:uninstall`.
 
@@ -75,7 +75,7 @@ El servidor responde `{}` a los hooks: no bloquea ni modifica nada de la sesión
 
 **Duración de cada evento**: la real, con el `duration_ms` que manda `PostToolUse` (Pre y Post se emparejan por `tool_use_id`). Si solo llega el `Pre`, se estima con el siguiente evento y se marca con `~`.
 
-**Tokens de cada ejecución**: los hooks no traen tokens. Al terminar cada turno, `hooks/observe-tokens.mjs` lee en tu equipo el transcript de la sesión (y los de sus subagentes) y manda a `POST /api/tokens` **solo números**: los tokens del mensaje del modelo que lanzó cada herramienta. El container nunca ve la conversación. La tabla muestra *entrada · salida* (la entrada incluye la caché) y el desglose al expandir la fila; si un mensaje lanzó varias herramientas a la vez, comparten sus tokens y llevan `≈`. Necesita Node ≥ 22 en el equipo; sin él, todo funciona salvo la columna de tokens.
+**Tokens de cada ejecución**: los hooks no traen tokens. Tras cada herramienta y al terminar cada turno, `hooks/observe-tokens.mjs` lee en tu equipo lo nuevo del transcript de la sesión (y de sus subagentes) y manda a `POST /api/tokens` **solo números**: los tokens del mensaje del modelo que lanzó cada herramienta. El container nunca ve la conversación. La tabla muestra *entrada · salida* (la entrada incluye la caché) y el desglose al expandir la fila; si un mensaje lanzó varias herramientas a la vez, comparten sus tokens y llevan `≈`. Aparecen uno o dos segundos después de cada herramienta. Necesita Node ≥ 22 en el equipo; sin él, todo funciona salvo la columna de tokens.
 
 **Qué se guarda**: por defecto (`OBSERVE_DETAIL=minimo`) solo lo que enseña la vista: herramienta, comando, ruta, duración, error y las primeras 12 líneas de la salida, con los secretos habituales tapados (`ghp_…`, `sk-…`, `AKIA…`, `Bearer …`, `password=…`, claves privadas). Del contenido que escriben `Write` y `Edit` solo se guarda el tamaño. Los eventos caducan a los 14 días (`OBSERVE_RETENTION_DAYS`). `OBSERVE_DETAIL=completo` guarda el payload entero, como agent-observe.
 
@@ -91,11 +91,11 @@ El servidor responde `{}` a los hooks: no bloquea ni modifica nada de la sesión
 flowchart LR
   subgraph equipo ["Tu equipo"]
     CC["Claude Code"]
-    HK["observe-tokens.mjs<br/>(hook Stop)"]
+    HK["observe-tokens.mjs<br/>(hook async)"]
     TR[("transcripts")]
   end
   CC -- "POST /api/hooks" --> APP
-  CC -. "al terminar el turno" .-> HK
+  CC -. "tras cada herramienta" .-> HK
   TR --> HK
   HK -- "POST /api/tokens<br/>(solo números)" --> APP
   subgraph container ["Container Docker"]
@@ -111,7 +111,7 @@ flowchart LR
 
 1. Cada hook de Claude Code hace un `POST` con su payload. `privacy.js` se queda solo con lo que enseña la vista y tapa los secretos; `store.js` lo guarda en memoria y lo añade a `events.jsonl`.
 2. El servidor reenvía cada evento por SSE a las pestañas abiertas.
-3. Al terminar cada turno, `observe-tokens.mjs` lee el transcript en tu equipo y manda solo los números de tokens; el servidor los valida, los guarda en `tokens.json` y avisa por SSE.
+3. Tras cada herramienta, en segundo plano, `observe-tokens.mjs` lee lo nuevo del transcript en tu equipo y manda solo los números de tokens; el servidor los valida, los guarda en `tokens.json` y avisa por SSE.
 4. La vista pide el resto (sesiones, eventos, tokens) por la API y `derive.js` lo convierte en filas, carriles y el árbol. Es lógica pura, sin DOM, y la usan también el servidor y los tests.
 
 | Archivo | Qué hace |

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { installHooks, uninstallHooks, EVENT_HOOKS, SCRIPT_NAME } from '../scripts/hooks.mjs';
+import { installHooks, uninstallHooks, EVENT_HOOKS, TOKEN_HOOKS, SCRIPT_NAME } from '../scripts/hooks.mjs';
 
 const url = 'http://127.0.0.1:4982';
 const scriptPath = '/home/u/.claude/hooks/' + SCRIPT_NAME;
@@ -28,9 +28,11 @@ test('install añade eventos y tokens sin tocar lo demás ni duplicar', () => {
     const http = settings.hooks[ev].flatMap((g) => g.hooks).filter((h) => h.type === 'http' && h.url === url + '/api/hooks');
     assert.equal(http.length, 1, `un solo hook http en ${ev}`);
   }
-  const tok = settings.hooks.Stop.flatMap((g) => g.hooks).filter((h) => h.type === 'command');
-  assert.equal(tok.length, 1);
-  assert.equal(tok[0].command, `node "${scriptPath}" ${url}`);
+  for (const ev of TOKEN_HOOKS) {
+    const tok = settings.hooks[ev].flatMap((g) => g.hooks).filter((h) => h.type === 'command' && h.command.includes(SCRIPT_NAME));
+    assert.equal(tok.length, 1, `un solo hook de tokens en ${ev}`);
+    assert.deepEqual(tok[0], { type: 'command', command: `node "${scriptPath}" ${url}`, async: true });
+  }
   assert.ok(!added.includes('Stop: eventos (http)'), 'el que ya estaba no se cuenta como añadido');
   assert.equal(settings.hooks.PreToolUse.at(-1).matcher, '*');
   assert.equal(existing.hooks.Stop.length, 1, 'no modifica el objeto original');
@@ -42,7 +44,20 @@ test('uninstall quita solo lo de observe y deja lo ajeno', () => {
   const installed = installHooks(existing, { url, scriptPath }).settings;
   const { settings, removed } = uninstallHooks(installed, { url });
   assert.deepEqual(settings, { model: 'opus', hooks: { PreToolUse: existing.hooks.PreToolUse } });
-  assert.equal(removed.length, EVENT_HOOKS.length + 2);
+  assert.equal(removed.length, EVENT_HOOKS.length + TOKEN_HOOKS.length);
+});
+
+test('install pone al día el hook de tokens de una versión anterior sin duplicarlo', () => {
+  const old = { hooks: { Stop: [{ hooks: [
+    { type: 'http', url: url + '/api/hooks', timeout: 2 },
+    { type: 'command', command: `node "${scriptPath}" ${url}`, timeout: 10 },
+  ] }] } };
+  const { settings, added } = installHooks(old, { url, scriptPath });
+  const stop = settings.hooks.Stop.flatMap((g) => g.hooks);
+  assert.equal(stop.length, 2);
+  assert.equal(stop[1].async, true);
+  assert.equal(stop[1].timeout, undefined);
+  assert.ok(added.includes('Stop: tokens (command, async), actualizado'));
 });
 
 test('el comando instala con copia de seguridad y desinstala, sin tocar el ~/.claude real', () => {

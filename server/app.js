@@ -135,7 +135,7 @@ export function createApp(store, { tokens = null, extraHosts = [], detail = 'min
     const clean = sanitizeTokens(body);
     if (!clean) return sendJson(res, 422, { ok: false, error: 'tokens no válidos' });
     if (!tokens) return sendJson(res, 503, { ok: false, error: 'tokens desactivados' });
-    tokens.set(clean);
+    if (!tokens.set(clean)) return sendJson(res, 200, { ok: true, ignored: 'foto más antigua que la guardada' });
     broadcast('tokens', { sessionId: clean.sessionId });
     return sendJson(res, 200, { ok: true, tools: Object.keys(clean.byTool).length });
   }

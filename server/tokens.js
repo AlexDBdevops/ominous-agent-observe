@@ -49,10 +49,18 @@ export class TokenStore {
     }
   }
 
-  /** Sustituye los tokens de la sesión (el hook manda siempre la sesión entera). */
+  /**
+   * Sustituye los tokens de la sesión (el hook manda siempre la sesión entera).
+   * Con herramientas en paralelo corren varios hooks a la vez y una foto
+   * antigua puede llegar después de una nueva: si trae menos mensajes del
+   * modelo que la guardada, se ignora. Devuelve si se guardó.
+   */
   set({ sessionId, byTool, totals }) {
+    const prev = this.bySession.get(sessionId);
+    if (prev && totals.messages < prev.totals.messages) return false;
     this.bySession.set(sessionId, { byTool, totals });
     this.save();
+    return true;
   }
 
   get(sessionId) {
