@@ -1,0 +1,4 @@
+# Falsos positivos de gitleaks: secretos inventados en un test (commit ya
+# publicado). Desde entonces el test los monta por partes.
+22cbf55738cc6889a13f3ff450289a90e25947eb:test/privacy.test.js:curl-auth-header:15
+22cbf55738cc6889a13f3ff450289a90e25947eb:test/privacy.test.js:aws-access-token:14
