@@ -143,3 +143,10 @@ test('POST /api/tokens guarda los números, avisa por el stream y rechaza lo que
   const r = await fetch(base + '/api/tokens', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: JSON.stringify(body) });
   assert.equal(r.status, 403);
 });
+
+test('un cwd que no es texto no rompe la lista de sesiones', async () => {
+  assert.equal((await post('/api/hooks', { session_id: 'cwdraro', hook_event_name: 'Stop', cwd: 123 })).status, 200);
+  const r = await fetch(base + '/api/sessions');
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).sessions.find((s) => s.id === 'cwdraro').project, 'sin proyecto');
+});

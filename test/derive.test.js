@@ -177,3 +177,14 @@ test('layoutTree: proyectos sin solaparse, vivas en el centro y subagentes como 
   assert.ok(t.projects.find((p) => p.name === 'tres').r > t.projects.find((p) => p.name === 'dos').r);
   assert.deepEqual(layoutTree([], () => false), { width: 0, height: 0, projects: [] });
 });
+
+test('el resumen aguanta un cwd que no es texto o es la raíz', () => {
+  const at = (cwd) => summarizeSession('s', [{ ...ev(1000, 'Stop'), cwd, payload: {} }]);
+  assert.equal(at(123).project, 'sin proyecto');
+  assert.equal(at(['x']).project, 'sin proyecto');
+  assert.equal(at('/').project, '/');
+  assert.equal(at('C:\\').project, 'C:');
+  // Un cwd raro no tapa el bueno de otro evento de la misma sesión.
+  const s = summarizeSession('s', [{ ...ev(1, 'Stop'), cwd: 5, payload: {} }, { ...ev(2, 'Stop'), cwd: '/p/demo', payload: {} }]);
+  assert.equal(s.project, 'demo');
+});

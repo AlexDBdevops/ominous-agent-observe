@@ -295,9 +295,11 @@ export function summarizeSession(sessionId, events) {
   // que llegan como prompt (<task-notification>…) empiezan por una etiqueta.
   const firstPrompt = sorted.find((e) => e.hookName === 'UserPromptSubmit' &&
     typeof e.payload?.prompt === 'string' && e.payload.prompt.trim() && !e.payload.prompt.trimStart().startsWith('<'));
-  const withCwd = sorted.find((e) => e.cwd || e.payload?.cwd);
-  const cwd = withCwd ? withCwd.cwd || withCwd.payload.cwd : '';
-  const project = cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() : 'sin proyecto';
+  // Solo rutas en texto (eventos antiguos o externos pueden traer otra cosa).
+  const textCwd = (e) => [e.cwd, e.payload?.cwd].find((c) => typeof c === 'string' && c) ?? '';
+  const cwd = sorted.map(textCwd).find(Boolean) ?? '';
+  // La raíz ('/', 'C:\') no tiene carpeta final: se usa la ruta tal cual.
+  const project = cwd ? cwd.split(/[\\/]/).filter(Boolean).pop() || cwd : 'sin proyecto';
   const title = firstPrompt
     ? firstPrompt.payload.prompt.replace(/\s+/g, ' ').trim().slice(0, 80)
     : 'Sesión sin prompt';

@@ -7,16 +7,20 @@ import { redact, minimizePayload } from '../server/privacy.js';
 import { Store, normalize } from '../server/store.js';
 import { buildRows } from '../public/derive.js';
 
+// Secretos inventados, montados por partes para que los escáneres de secretos
+// (gitleaks, secret scanning) no los confundan con claves reales del repo.
+const fake = (...parts) => parts.join('');
+
 test('redact tapa los secretos habituales y deja el resto', () => {
   const cases = [
-    'git clone https://ghp_abcdefghijklmnopqrstuvwxyz0123456789@github.com/x',
-    'export ANTHROPIC_API_KEY=sk-ant-api03-abcdefghijklmnopqrstuvwx',
-    'aws AKIAABCDEFGHIJKLMNOP',
-    'curl -H "Authorization: Bearer abc.def-ghi_jkl123456"',
-    'psql postgres://admin:hunter22@db:5432/app',
-    'DB_PASSWORD=supersecreto npm start',
-    '"client_secret": "zzzzzzzzzz"',
-    '-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----',
+    fake('git clone https://', 'ghp_', 'abcdefghijklmnopqrstuvwxyz0123456789', '@github.com/x'),
+    fake('export ANTHROPIC_API_KEY=', 'sk-ant-', 'api03-abcdefghijklmnopqrstuvwx'),
+    fake('aws ', 'AKIA', 'ABCDEFGHIJKLMNOP'),
+    fake('curl -H "Authorization: ', 'Bearer ', 'abc.def-ghi_jkl123456"'),
+    fake('psql postgres://admin:', 'hunter22', '@db:5432/app'),
+    fake('DB_PASSWORD', '=supersecreto npm start'),
+    fake('"client_secret"', ': "zzzzzzzzzz"'),
+    fake('-----BEGIN OPENSSH ', 'PRIVATE KEY-----\nAAAA\n-----END OPENSSH ', 'PRIVATE KEY-----'),
   ];
   for (const c of cases) {
     const r = redact(c);

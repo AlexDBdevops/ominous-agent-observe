@@ -19,6 +19,10 @@ export function truncateDeep(value, max = MAX_STRING) {
   return value;
 }
 
+// El payload llega de fuera: un cwd que no sea texto (número, lista…) rompería
+// el resumen de la sesión, así que se descarta.
+const textOrNull = (v) => (typeof v === 'string' && v ? v.slice(0, 1000) : null);
+
 /**
  * Normaliza a un registro interno. Acepta:
  * - el sobre de agent-observe: { agentClass, sessionId, agentId, hookName, cwd, payload, timestamp? }
@@ -40,7 +44,7 @@ export function normalize(body, now = Date.now(), { detail = 'minimo' } = {}) {
     agentId: String((isEnvelope ? body.agentId : null) ?? payload.agent_id ?? sessionId),
     agentClass: (isEnvelope ? body.agentClass : null) ?? 'claude-code',
     hookName: String(hookName),
-    cwd: (isEnvelope ? body.cwd : null) ?? payload.cwd ?? null,
+    cwd: textOrNull((isEnvelope ? body.cwd : null) ?? payload.cwd),
     payload: detail === 'completo' ? truncateDeep(payload) : minimizePayload(String(hookName), payload),
   };
 }
