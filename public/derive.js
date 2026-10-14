@@ -259,6 +259,7 @@ export function buildLanes(sessionId, events) {
     if (!lanes.has(id)) lanes.set(id, { id, main: id === sessionId, name: '', firstTs: ev.ts });
     const lane = lanes.get(id);
     if (!lane.name && ev.payload?.agent_type) lane.name = ev.payload.agent_type;
+    lane.done = ev.hookName === 'SubagentStop';
   }
   if (!lanes.has(sessionId)) lanes.set(sessionId, { id: sessionId, main: true, name: '', firstTs: 0 });
   return [...lanes.values()]
@@ -314,8 +315,8 @@ export function summarizeSession(sessionId, events) {
     lastTs: sorted[sorted.length - 1]?.ts ?? 0,
     // Una sesión reanudada (SessionStart después del SessionEnd) vuelve a estar viva.
     ended: lastIndexOf(sorted, 'SessionEnd') > lastIndexOf(sorted, 'SessionStart'),
-    // Subagentes que lanzó (para el árbol de la portada).
-    agents: buildLanes(sessionId, sorted).filter((l) => !l.main).map(({ id, name }) => ({ id, name })),
+    // Subagentes que lanzó (para el árbol de la portada); done: su último evento es SubagentStop.
+    agents: buildLanes(sessionId, sorted).filter((l) => !l.main).map(({ id, name, done }) => ({ id, name, done })),
   };
 }
 

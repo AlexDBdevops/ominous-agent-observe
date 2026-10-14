@@ -42,6 +42,7 @@ const state = {
   actMode: initialActMode(), // 'auto' | 'open' | 'closed'
   actIsOpen: false,
   actHeight: Number(load('actHeight', '240')) || 240,
+  onlyActive: load('onlyActive', '0') === '1', // portada: solo subagentes en marcha
 };
 
 // ?actividad=desplegada|plegada|auto en la URL manda sobre lo guardado.
@@ -250,7 +251,17 @@ function renderHome() {
     return;
   }
   const byId = new Map(state.sessions.map((s) => [s.id, s]));
-  const tree = layoutTree(state.sessions, isLive);
+  $('only-active').classList.toggle('on', state.onlyActive);
+  $('only-active').setAttribute('aria-pressed', String(state.onlyActive));
+  // Solo activos: sesiones vivas con sus subagentes en marcha; los proyectos sin
+  // nada vivo desaparecen. Un subagente de una sesión no viva cuenta como terminado.
+  const sessions = !state.onlyActive ? state.sessions
+    : state.sessions.filter(isLive).map((s) => ({ ...s, agents: s.agents.filter((a) => !a.done) }));
+  if (!sessions.length) {
+    $('home-tree').innerHTML = '<div class="empty">No hay nada en marcha ahora mismo.</div>';
+    return;
+  }
+  const tree = layoutTree(sessions, isLive);
   const f = (v) => v.toFixed(1);
   const svg = tree.projects.map((p) => {
     const live = p.sessions.some((s) => s.live);
@@ -259,7 +270,8 @@ function renderHome() {
       const spokes = t.agents.map((a) => `<line class="spoke" x1="${f(t.x)}" y1="${f(t.y)}" x2="${f(a.x)}" y2="${f(a.y)}"/><circle class="sub" cx="${f(a.x)}" cy="${f(a.y)}" r="3"/>`).join('');
       const label = t.live ? (s.title.length > 30 ? s.title.slice(0, 29) + '…' : s.title) : s.hash;
       const subs = s.agents.length;
-      const tip = `${s.title} · ${s.hash} · ${s.count} eventos${subs ? ` · ${subs} ${subs === 1 ? 'subagente' : 'subagentes'}` : ''}${t.live ? ' · viva' : ''}`;
+      const active = t.live ? s.agents.filter((a) => !a.done).length : 0;
+      const tip = `${s.title} · ${s.hash} · ${s.count} eventos${subs ? ` · ${subs} ${subs === 1 ? 'subagente' : 'subagentes'}${active ? ` (${active} en marcha)` : ''}` : ''}${t.live ? ' · viva' : ''}`;
       return `<g class="t-node ${t.live ? 'live' : ''}" data-session="${esc(t.id)}" tabindex="0" role="link" aria-label="${esc(tip)}">
         <title>${esc(tip)}</title>${spokes}
         ${t.live ? `<circle class="ring" cx="${f(t.x)}" cy="${f(t.y)}" r="13"/>` : ''}
@@ -277,6 +289,11 @@ function renderHome() {
 document.querySelector('.brand').addEventListener('click', (e) => {
   e.preventDefault();
   if (state.selected) goHome();
+});
+$('only-active').addEventListener('click', () => {
+  state.onlyActive = !state.onlyActive;
+  save('onlyActive', state.onlyActive ? '1' : '0');
+  renderHome();
 });
 $('home-tree').addEventListener('click', (e) => {
   const n = e.target.closest('[data-session]');
