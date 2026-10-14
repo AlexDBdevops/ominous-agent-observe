@@ -150,7 +150,7 @@ test('el resumen lista los subagentes de la sesión', () => {
     { ...ev(2000, 'SubagentStart', { agent_type: 'Explore' }), agentId: 'a1' },
     { ...ev(3000, 'SubagentStop', {}), agentId: 'a2' },
   ]);
-  assert.deepEqual(s.agents, [{ id: 'a1', name: 'Explore' }, { id: 'a2', name: 'a2' }]);
+  assert.deepEqual(s.agents, [{ id: 'a1', name: 'Explore', done: false }, { id: 'a2', name: 'a2', done: true }]);
 });
 
 test('layoutTree: proyectos sin solaparse, vivas en el centro y subagentes como radios', () => {
@@ -172,8 +172,7 @@ test('layoutTree: proyectos sin solaparse, vivas en el centro y subagentes como 
   const b = uno.sessions.find((s) => s.id === 'b');
   assert.ok(Math.abs(Math.hypot(b.x - uno.x, b.y - uno.y) - uno.r) < 1e-6, 'las no vivas van en el borde');
   const c = uno.sessions.find((s) => s.id === 'c');
-  assert.deepEqual([c.agents.length, c.more], [10, 2]);
-  // Con muchas sesiones el círculo crece para que no se pisen.
+  assert.deepEqual([c.agents.length, c.more], [10, 2]);  // Con muchas sesiones el círculo crece para que no se pisen.
   assert.ok(t.projects.find((p) => p.name === 'tres').r > t.projects.find((p) => p.name === 'dos').r);
   assert.deepEqual(layoutTree([], () => false), { width: 0, height: 0, projects: [] });
 });
