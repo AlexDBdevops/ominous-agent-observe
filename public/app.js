@@ -1,4 +1,4 @@
-import { COLORS, NO_TOKENS, rowColor, buildRows, buildLanes, packDots, summarizeSession, layoutTree, formatDuration, formatTokens, inputTotal } from './derive.js';
+import { COLORS, NO_TOKENS, rowColor, buildRows, buildLanes, packDots, summarizeSession, layoutTree, formatDuration, formatTokens, inputTotal, newInput } from './derive.js';
 
 // Iconos lucide de la maqueta (rocket, file-text, zap, wrench, book-open, file-pen).
 const ICONS = {
@@ -205,10 +205,10 @@ function render() {
   $('st-run').classList.toggle('running', !!cur);
   const tt = state.tokens.totals;
   $('st-tok').innerHTML = state.tokens.available && tt
-    ? `${formatTokens(inputTotal(tt))} <small>· ${formatTokens(tt.output)} sal</small>`
+    ? `${formatTokens(newInput(tt))} <small>· ${formatTokens(tt.output)} sal</small>`
     : '— <small>sin datos</small>';
   $('st-tok').title = state.tokens.available && tt
-    ? `${tokenBreakdown(tt)} (${tt.messages} mensajes del modelo)`
+    ? `Nuevos: entrada ${formatTokens(newInput(tt))} (sin caché + caché escrita) · salida ${formatTokens(tt.output)}\nProcesados: ${tokenBreakdown(tt)}\n${tt.messages} mensajes del modelo; cada uno relee el contexto desde la caché`
     : 'Sin datos de tokens: llegan unos segundos después de cada herramienta si está instalado el hook (npm run hooks:install, ver README)';
 
   // Actividad (rango completo, todos los agentes, sin filtros de tipo)
