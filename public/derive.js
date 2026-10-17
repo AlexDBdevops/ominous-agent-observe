@@ -110,6 +110,9 @@ export function formatTokens(n) {
 /** Entrada total de un mensaje: sin caché + leída de caché + escrita en caché. */
 export const inputTotal = (t) => (t ? t.input + t.cacheRead + t.cacheWrite : 0);
 
+/** Entrada nueva de una sesión: sin la caché leída, que cada mensaje vuelve a contar entera. */
+export const newInput = (t) => (t ? t.input + t.cacheWrite : 0);
+
 export function formatDuration(ms) {
   if (ms == null || !Number.isFinite(ms)) return '—';
   if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;

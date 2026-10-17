@@ -11,7 +11,7 @@ import { parseTranscript, sessionTokens } from '../hooks/observe-tokens.mjs';
 // El estado de la lectura incremental va a una carpeta de pruebas, no a la temporal real.
 process.env.OBSERVE_TOKENS_STATE = fs.mkdtempSync(path.join(os.tmpdir(), 'observe-state-'));
 import { sanitizeTokens, TokenStore } from '../server/tokens.js';
-import { buildRows, formatTokens, inputTotal } from '../public/derive.js';
+import { buildRows, formatTokens, inputTotal, newInput } from '../public/derive.js';
 
 const HOOK = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'observe-tokens.mjs');
 const usage = (i, o, cr, cw) => ({ input_tokens: i, output_tokens: o, cache_read_input_tokens: cr, cache_creation_input_tokens: cw });
@@ -147,6 +147,11 @@ test('buildRows pone los tokens en la fila por tool_use_id', () => {
   ], { tokens: byTool });
   assert.equal(rows[0].tokens.output, 237);
   assert.equal(inputTotal(rows[0].tokens), 2 + 30129 + 16124);
+});
+
+test('newInput no cuenta la caché leída', () => {
+  assert.equal(newInput({ input: 140, cacheRead: 15049942, cacheWrite: 277490, output: 51397 }), 140 + 277490);
+  assert.equal(newInput(null), 0);
 });
 
 test('formatTokens', () => {
