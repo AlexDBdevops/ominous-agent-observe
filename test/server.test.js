@@ -98,7 +98,9 @@ test('rechaza Hosts ajenos (DNS rebinding)', async () => {
 test('sirve la vista y bloquea path traversal', async () => {
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);
-  assert.match(await home.text(), /observe/);
+  const page = await home.text();
+  assert.match(page, /observe/);
+  assert.match(page, /<meta name="darkreader-lock">/, 'Dark Reader no repinta el tema propio');
   const evil = await fetch(base + '/..%2fpackage.json');
   assert.notEqual(evil.status, 200);
 });
